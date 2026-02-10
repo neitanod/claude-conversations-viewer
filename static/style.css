@@ -95,6 +95,32 @@ header h1 a {
     gap: 1rem;
 }
 
+/* Refresh button */
+.refresh-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.refresh-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.refresh-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
 /* Theme toggle */
 .theme-toggle {
     background: var(--bg-card);

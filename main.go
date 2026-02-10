@@ -814,6 +814,30 @@ func (a *App) handleAPIConversation(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(conv)
 }
 
+func (a *App) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	// Clear current data and reload
+	a.mu.Lock()
+	a.conversations = make(map[string]*Conversation)
+	a.projects = make(map[string]*Project)
+	// Don't clear cache - let loadAllConversations check file mod times
+	a.mu.Unlock()
+
+	if err := a.loadAllConversations(); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to reload: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Save updated cache
+	go a.saveCache()
+
+	// Redirect back to referrer or home
+	referer := r.Header.Get("Referer")
+	if referer == "" {
+		referer = "/"
+	}
+	http.Redirect(w, r, referer, http.StatusFound)
+}
+
 func main() {
 	port := "8042"
 	if len(os.Args) > 1 {
@@ -839,6 +863,7 @@ func main() {
 	http.HandleFunc("/project", app.handleProject)
 	http.HandleFunc("/conversation", app.handleConversation)
 	http.HandleFunc("/search", app.handleSearch)
+	http.HandleFunc("/refresh", app.handleRefresh)
 	http.HandleFunc("/api/projects", app.handleAPIProjects)
 	http.HandleFunc("/api/conversation", app.handleAPIConversation)
 
