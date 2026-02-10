@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Conversations Viewer</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1><a href="/">Claude Conversations</a></h1>
+        <div class="header-controls">
+            <form action="/search" method="GET" class="search-form">
+                <input type="text" name="q" placeholder="Buscar en todas las conversaciones..." autocomplete="off">
+                <button type="submit">Buscar</button>
+            </form>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="stats">
+            <div class="stat">
+                <span class="stat-value">{{.TotalProjects}}</span>
+                <span class="stat-label">Proyectos</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value">{{.TotalConversations}}</span>
+                <span class="stat-label">Conversaciones</span>
+            </div>
+        </div>
+
+        <div class="sort-controls">
+            <label>Ordenar por:</label>
+            <a href="?sort=last&dir={{if and (eq .SortOrder "last") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "last"}}active{{end}}">
+                Última actividad {{if eq .SortOrder "last"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+            </a>
+            <a href="?sort=first&dir={{if and (eq .SortOrder "first") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "first"}}active{{end}}">
+                Primera actividad {{if eq .SortOrder "first"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+            </a>
+            <a href="?sort=name&dir={{if and (eq .SortOrder "name") (eq .SortDir "asc")}}desc{{else}}asc{{end}}" class="sort-btn {{if eq .SortOrder "name"}}active{{end}}">
+                Nombre {{if eq .SortOrder "name"}}{{if eq .SortDir "asc"}}▲{{else}}▼{{end}}{{end}}
+            </a>
+            <a href="?sort=messages&dir={{if and (eq .SortOrder "messages") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "messages"}}active{{end}}">
+                Más mensajes {{if eq .SortOrder "messages"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+            </a>
+        </div>
+
+        <h2>Proyectos</h2>
+        <div class="projects-grid">
+            {{range .Projects}}
+            <a href="/project?path={{.Path}}" class="project-card">
+                <h3>{{.Name}}</h3>
+                <p class="project-path">{{.Path}}</p>
+                <div class="project-meta">
+                    <span>{{len .Conversations}} conv.</span>
+                    <span>{{.TotalMessages}} msgs</span>
+                </div>
+                <time>{{formatDateTime .LastActivity}}</time>
+            </a>
+            {{end}}
+        </div>
+    </main>
+
+    <footer>
+        <p>Claude Conversations Viewer</p>
+    </footer>
+
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') ||
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+</body>
+</html>

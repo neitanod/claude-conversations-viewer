@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Conversation.Titles}}{{index .Conversation.Titles 0}}{{else}}Conversación{{end}} - Claude Conversations</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1><a href="/">Claude Conversations</a></h1>
+        <div class="header-controls">
+            <form action="/search" method="GET" class="search-form">
+                <input type="text" name="q" placeholder="Buscar en todas las conversaciones..." autocomplete="off">
+                <button type="submit">Buscar</button>
+            </form>
+            <button class="theme-toggle" onclick="toggleTheme()" title="Cambiar tema">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <nav class="breadcrumb">
+            <a href="/">Proyectos</a>
+            <span>→</span>
+            <a href="/project?path={{.Conversation.Project}}">{{.Conversation.ProjectName}}</a>
+            <span>→</span>
+            <span>Conversación</span>
+        </nav>
+
+        <div class="conversation-header">
+            <h2>{{.Conversation.ProjectName}}</h2>
+
+            {{if .Conversation.Titles}}
+            <div class="conversation-titles-header">
+                <div class="conversation-titles">
+                    {{range .Conversation.Titles}}
+                    <span class="conversation-title">{{.}}</span>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+
+            <p class="conversation-date">{{formatDateTime .Conversation.FirstTime}} → {{formatDateTime .Conversation.LastTime}}</p>
+            <p class="conversation-id">Session: {{.Conversation.SessionID}}</p>
+
+            <div class="conversation-stats">
+                <span>{{.Conversation.UserCount}} mensajes de usuario</span>
+                <span>{{.Conversation.AssistantCount}} respuestas de Claude</span>
+                <span>{{.Conversation.MessageCount}} total</span>
+            </div>
+        </div>
+
+        <div class="messages">
+            {{range $i, $msg := .Messages}}
+            <div class="message {{if eq .Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{$i}}">
+                <div class="message-header" onclick="toggleMessage({{$i}})">
+                    <span class="message-sender">{{if eq .Type "user"}}Usuario{{else}}Claude{{end}}</span>
+                    <span class="message-time">{{formatDate .Timestamp}} {{formatTime .Timestamp}}</span>
+                </div>
+                <div class="message-content {{if gt (len .Content) 500}}collapsed{{end}}" id="content-{{$i}}">{{.Content}}</div>
+                {{if gt (len .Content) 500}}
+                <div class="message-toggle" id="toggle-{{$i}}" onclick="toggleMessage({{$i}})">
+                    Mostrar más
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+    </main>
+
+    <footer>
+        <p>Claude Conversations Viewer</p>
+    </footer>
+
+    <script>
+        function toggleTheme() {
+            const html = document.documentElement;
+            const currentTheme = html.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function toggleMessage(index) {
+            const content = document.getElementById('content-' + index);
+            const toggle = document.getElementById('toggle-' + index);
+
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                if (toggle) toggle.textContent = 'Mostrar menos';
+            } else {
+                content.classList.add('collapsed');
+                if (toggle) toggle.textContent = 'Mostrar más';
+            }
+        }
+
+        const savedTheme = localStorage.getItem('theme') ||
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    </script>
+</body>
+</html>
