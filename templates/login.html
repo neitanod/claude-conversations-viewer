@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Claude Conversations Viewer</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script>
+        if (localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.style.background = '#0f172a';
+        }
+    </script>
     <script src="/static/i18n.js"></script>
 </head>
 <body>
@@ -37,9 +43,13 @@
     </footer>
 
     <script>
-        const savedTheme = localStorage.getItem('theme') ||
-            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        (function() {
+            const savedTheme = localStorage.getItem('theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark');
+            }
+        })();
     </script>
 </body>
 </html>

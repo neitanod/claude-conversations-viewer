@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{if .Conversation.Titles}}{{index .Conversation.Titles 0}}{{else}}Conversation{{end}} - Claude Conversations</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script>
+        if (localStorage.getItem('theme') === 'dark' ||
+            (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.style.background = '#0f172a';
+        }
+    </script>
     <script src="/static/i18n.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -196,11 +202,15 @@
 
     <script>
         function toggleTheme() {
-            const html = document.documentElement;
-            const currentTheme = html.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            html.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
+            const body = document.body;
+            const isDark = body.classList.contains('dark');
+            if (isDark) {
+                body.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
         }
 
         function toggleMenu() {
@@ -228,9 +238,13 @@
             }
         }
 
-        const savedTheme = localStorage.getItem('theme') ||
-            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        (function() {
+            const savedTheme = localStorage.getItem('theme') ||
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark');
+            }
+        })();
 
         function scrollToTop() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -509,6 +523,11 @@
 
         function goToLast() {
             setFocus(vim.messages.length - 1);
+        }
+
+        function goBack() {
+            // Keep the projectFocusIndex so project page knows which conversation was selected
+            window.location.href = '/project?path={{.Conversation.Project}}';
         }
 
         function toggleSelectionMode() {
@@ -837,6 +856,12 @@
             else if (key === 'Enter' && vim.focusedIndex >= 0) {
                 e.preventDefault();
                 toggleMessage(vim.focusedIndex);
+            }
+
+            // Back navigation
+            else if (key === 'Backspace') {
+                e.preventDefault();
+                goBack();
             }
         });
 
