@@ -1,5 +1,133 @@
 # Claude Conversations Viewer
 
+Local web interface to explore, search and read all Claude Code conversations, regardless of which project they originated from.
+
+## Problem it solves
+
+Claude Code stores conversations in `~/.claude/projects/` fragmented by project. This app unifies all conversations in a browsable web interface with search and sorting.
+
+## Installation
+
+```bash
+# The binary is at:
+~/robotin/apps/claude-conversations-viewer/claude-conversations-viewer
+
+# Or run directly:
+cd ~/robotin/apps/claude-conversations-viewer
+./run
+```
+
+## Usage
+
+```bash
+# Start on default port (8042)
+./claude-conversations-viewer
+
+# Start on custom port
+./claude-conversations-viewer 9000
+```
+
+Then open http://localhost:8042 in your browser.
+
+## Features
+
+- Optional authentication with username/password (30-day sessions)
+- View all projects with conversations
+- Navigate by project and individual conversation
+- Full-text search in user and Agent messages
+- Project-scoped search (on project page)
+- Local conversation search (JavaScript)
+- Vim-style navigation: j/k, gg/G, v (selection), y (yank), h/l (collapse/expand)
+- Sorting by last/first activity, name, message count
+- Toggle ascending/descending by clicking the same criterion
+- Light and dark mode with persistence
+- Collapsible content for long messages
+- Metadata cache for fast loading
+
+## Examples
+
+### View all conversations
+
+```bash
+./run
+# Open http://localhost:8042
+```
+
+### Search in conversations
+
+1. Use the search field in the header
+2. Type the term and press Enter
+3. Results show previews with context around the match
+
+### Change sorting
+
+- Click "Last activity" to sort by last message date
+- Click again to invert the order (asc/desc)
+- Most recent projects appear first by default
+
+## JSON API
+
+```bash
+# List projects
+curl http://localhost:8042/api/projects
+
+# Get full conversation
+curl http://localhost:8042/api/conversation?id=SESSION_ID
+```
+
+## Tests
+
+```bash
+./test
+# Or directly:
+go test -v -cover
+```
+
+Current coverage: 82.7%
+
+## Authentication (optional)
+
+By default the application does not require login. To enable authentication, create the file `~/.claude/conversations-viewer-config.json`:
+
+```json
+{
+  "username": "my_user",
+  "password": "my_secure_password"
+}
+```
+
+If the file does not exist or has empty credentials, the app works without authentication. Sessions last 30 days and are stored in `~/.claude/conversations-viewer-sessions.json`.
+
+## Configuration
+
+- **Port:** First CLI argument (default: 8042)
+- **Cache:** `~/.claude/conversations-viewer-cache.json` (created automatically)
+- **Config:** `~/.claude/conversations-viewer-config.json` (credentials)
+- **Sessions:** `~/.claude/conversations-viewer-sessions.json` (session tokens)
+- **Theme:** Saved in browser localStorage
+
+## File structure
+
+```
+claude-conversations-viewer/
+├── main.go           # Main source code
+├── main_test.go      # Unit tests
+├── go.mod            # Go module
+├── run               # Run script
+├── test              # Test script
+├── build             # Build script
+├── README.md         # This documentation
+├── ai/
+│   └── specs/        # Technical specifications
+├── templates/        # HTML templates
+└── static/
+    └── style.css     # CSS styles
+```
+
+---
+
+# Claude Conversations Viewer
+
 Interfaz web local para explorar, buscar y leer todas las conversaciones con Claude Code, sin importar en qué proyecto se originaron.
 
 ## Problema que resuelve
@@ -29,20 +157,20 @@ cd ~/robotin/apps/claude-conversations-viewer
 
 Luego abrir http://localhost:8042 en el navegador.
 
-## Caracteristicas
+## Características
 
-- Autenticacion opcional con usuario/password (sesiones de 30 dias)
+- Autenticación opcional con usuario/password (sesiones de 30 días)
 - Vista de todos los proyectos con conversaciones
-- Navegacion por proyecto y conversacion individual
-- Busqueda full-text en mensajes de usuario y Agent
-- Busqueda por proyecto (en pagina de proyecto)
-- Busqueda local en conversacion (JavaScript)
-- Navegacion Vim-style: j/k, gg/G, v (seleccion), y (yank), h/l (colapsar/expandir)
-- Ordenamiento por ultima/primera actividad, nombre, cantidad de mensajes
+- Navegación por proyecto y conversación individual
+- Búsqueda full-text en mensajes de usuario y Agent
+- Búsqueda por proyecto (en página de proyecto)
+- Búsqueda local en conversación (JavaScript)
+- Navegación Vim-style: j/k, gg/G, v (selección), y (yank), h/l (colapsar/expandir)
+- Ordenamiento por última/primera actividad, nombre, cantidad de mensajes
 - Toggle ascendente/descendente clickeando en el mismo criterio
 - Modo claro y oscuro con persistencia
 - Contenido colapsable para mensajes largos
-- Cache de metadatos para carga rapida
+- Cache de metadatos para carga rápida
 
 ## Ejemplos
 
@@ -85,9 +213,9 @@ go test -v -cover
 
 Cobertura actual: 82.7%
 
-## Autenticacion (opcional)
+## Autenticación (opcional)
 
-Por defecto la aplicacion no requiere login. Para habilitar autenticacion, crear el archivo `~/.claude/conversations-viewer-config.json`:
+Por defecto la aplicación no requiere login. Para habilitar autenticación, crear el archivo `~/.claude/conversations-viewer-config.json`:
 
 ```json
 {
@@ -96,14 +224,14 @@ Por defecto la aplicacion no requiere login. Para habilitar autenticacion, crear
 }
 ```
 
-Si el archivo no existe o tiene credenciales vacias, la app funciona sin autenticacion. Las sesiones duran 30 dias y se almacenan en `~/.claude/conversations-viewer-sessions.json`.
+Si el archivo no existe o tiene credenciales vacías, la app funciona sin autenticación. Las sesiones duran 30 días y se almacenan en `~/.claude/conversations-viewer-sessions.json`.
 
-## Configuracion
+## Configuración
 
 - **Puerto:** Primer argumento CLI (default: 8042)
-- **Cache:** `~/.claude/conversations-viewer-cache.json` (se crea automaticamente)
+- **Cache:** `~/.claude/conversations-viewer-cache.json` (se crea automáticamente)
 - **Config:** `~/.claude/conversations-viewer-config.json` (credenciales)
-- **Sesiones:** `~/.claude/conversations-viewer-sessions.json` (tokens de sesion)
+- **Sesiones:** `~/.claude/conversations-viewer-sessions.json` (tokens de sesión)
 - **Tema:** Se guarda en localStorage del navegador
 
 ## Estructura de archivos

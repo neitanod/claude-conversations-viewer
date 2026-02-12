@@ -1,3 +1,102 @@
+# Technical Decisions
+
+## Stack
+
+- **Language:** Go 1.21+
+- **Dependencies:** Standard library only (net/http, html/template, encoding/json)
+- **Frontend:** HTML + vanilla CSS, no JavaScript frameworks
+- **Templates:** Go templates embedded with `//go:embed`
+- **Styles:** CSS with variables for theming
+
+## Architecture
+
+```
+main.go              # Main code (entire app in one file)
+├── Types
+│   ├── Message      # Individual message (user/assistant)
+│   ├── Conversation # Conversation with metadata
+│   ├── Project      # Project with its conversations
+│   └── App          # Application state
+│
+├── Parsing
+│   ├── parseConversationFile()  # Reads and parses .jsonl
+│   ├── extractTextContent()      # Extracts text from content blocks
+│   └── loadAllConversations()    # Initial load with cache
+│
+├── Cache
+│   ├── loadCache()   # Load cache from disk
+│   └── saveCache()   # Save cache in background
+│
+├── Sorting
+│   ├── getProjectsSorted()    # Sort projects
+│   └── sortConversations()    # Sort conversations
+│
+└── HTTP Handlers
+    ├── handleIndex        # GET /
+    ├── handleProject      # GET /project?path=...
+    ├── handleConversation # GET /conversation?id=...
+    ├── handleSearch       # GET /search?q=...
+    ├── handleAPIProjects  # GET /api/projects
+    └── handleAPIConversation # GET /api/conversation?id=...
+
+templates/           # Embedded HTML templates
+├── index.html       # Project listing
+├── project.html     # Project conversations
+├── conversation.html # Conversation view
+└── search.html      # Search results
+
+static/
+└── style.css        # Styles with CSS variables for themes
+```
+
+## Claude Code data structure
+
+Claude Code stores conversations in:
+```
+~/.claude/
+├── projects/
+│   ├── -home-sebas-robotin/           # Project name (path with dashes)
+│   │   ├── abc123.jsonl               # One conversation per file
+│   │   └── def456.jsonl
+│   └── -home-sebas-doc-prj-gobot/
+│       └── xyz789.jsonl
+└── conversations-viewer-cache.json    # Metadata cache (created by this app)
+```
+
+Each `.jsonl` file contains JSON lines with:
+- `type: "user"` - User message
+- `type: "assistant"` - Assistant response
+- `type: "summary"` - Conversation titles/summaries
+
+## Configuration
+
+- **Port:** 8042 by default, configurable as first CLI argument
+- **Cache:** `~/.claude/conversations-viewer-cache.json`
+- **Theme:** Saved in browser localStorage
+
+## Design decisions
+
+### Lazy loading of messages
+Full messages are only loaded when viewing a conversation. The initial list only loads metadata (title, timestamps, counts).
+
+### Metadata cache
+Metadata is cached per file with its `modTime`. If the file hasn't changed, cache is used. This allows the second load to be instant.
+
+### In-memory sorting
+All sorting is done in memory. With 3000+ conversations, this is still instant.
+
+### No database
+No SQLite or similar is used to maintain simplicity. The JSONL files are already on disk and are fast enough.
+
+## Security considerations
+
+- The app only serves on localhost (doesn't expose anything to the network)
+- Read-only: doesn't modify any Claude Code files
+- Cache is optional and doesn't contain sensitive data
+- Templates escape HTML to prevent XSS
+
+---
+
 # Decisiones Técnicas
 
 ## Stack
@@ -65,7 +164,7 @@ Claude Code almacena las conversaciones en:
 
 Cada archivo `.jsonl` contiene líneas JSON con:
 - `type: "user"` - Mensaje del usuario
-- `type: "assistant"` - Respuesta de Claude
+- `type: "assistant"` - Respuesta del asistente
 - `type: "summary"` - Títulos/resúmenes de la conversación
 
 ## Configuración
