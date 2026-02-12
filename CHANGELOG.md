@@ -2,10 +2,9 @@
 
 ## 2026-02-12
 
-### Autenticacion
-- Sistema de login con usuario/password
-- Credenciales por defecto: `user` / `conversations#`
-- Configuracion en `~/.claude/conversations-viewer-config.json`
+### Autenticacion (opcional)
+- Sistema de login con usuario/password (deshabilitado por defecto)
+- Para habilitar: crear `~/.claude/conversations-viewer-config.json` con username/password
 - Sesiones persistentes de 30 dias en `~/.claude/conversations-viewer-sessions.json`
 
 ### Renombrado de Claude a Agent

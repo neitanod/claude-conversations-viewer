@@ -121,18 +121,16 @@ func generateToken() string {
 }
 
 func loadConfig(configPath string) (*Config, error) {
-	// Default config
+	// Default config with empty credentials (no auth required)
 	config := &Config{
-		Username: "user",
-		Password: "conversations#",
+		Username: "",
+		Password: "",
 	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Create default config file
-			defaultData, _ := json.MarshalIndent(config, "", "  ")
-			os.WriteFile(configPath, defaultData, 0600)
+			// No config file = no authentication required
 			return config, nil
 		}
 		return nil, err
@@ -142,6 +140,10 @@ func loadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 	return config, nil
+}
+
+func (c *Config) AuthEnabled() bool {
+	return c.Username != "" && c.Password != ""
 }
 
 // ContentBlock represents either text or a tool invocation (in order)
@@ -1194,6 +1196,12 @@ func (a *App) handleRefresh(w http.ResponseWriter, r *http.Request) {
 // Authentication handlers
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// If auth is not enabled, redirect to home
+	if !a.config.AuthEnabled() {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
 	if r.Method == "GET" {
 		// Show login form
 		tmpl, err := template.New("login.html").Funcs(templateFuncs).ParseFS(templatesFS, "templates/login.html")
@@ -1264,6 +1272,11 @@ func (a *App) isAuthenticated(r *http.Request) bool {
 
 func (a *App) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// If auth is not enabled, allow all requests
+		if !a.config.AuthEnabled() {
+			handler(w, r)
+			return
+		}
 		if !a.isAuthenticated(r) {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
@@ -1305,7 +1318,11 @@ func main() {
 	http.HandleFunc("/api/projects", app.requireAuth(app.handleAPIProjects))
 	http.HandleFunc("/api/conversation", app.requireAuth(app.handleAPIConversation))
 
-	log.Printf("Config file: %s", filepath.Join(app.claudeDir, "conversations-viewer-config.json"))
+	if app.config.AuthEnabled() {
+		log.Printf("Authentication enabled (config: %s)", filepath.Join(app.claudeDir, "conversations-viewer-config.json"))
+	} else {
+		log.Printf("Authentication disabled (no credentials in config)")
+	}
 
 	addr := ":" + port
 	log.Printf("Starting Claude Conversations Viewer on http://localhost%s", addr)

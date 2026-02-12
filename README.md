@@ -31,7 +31,7 @@ Luego abrir http://localhost:8042 en el navegador.
 
 ## Caracteristicas
 
-- Autenticacion con usuario/password persistente (sesiones de 30 dias)
+- Autenticacion opcional con usuario/password (sesiones de 30 dias)
 - Vista de todos los proyectos con conversaciones
 - Navegacion por proyecto y conversacion individual
 - Busqueda full-text en mensajes de usuario y Agent
@@ -85,16 +85,9 @@ go test -v -cover
 
 Cobertura actual: 82.7%
 
-## Autenticacion
+## Autenticacion (opcional)
 
-La aplicacion requiere login para acceder. Las credenciales por defecto son:
-
-- **Usuario:** `user`
-- **Password:** `conversations#`
-
-### Cambiar credenciales
-
-Editar el archivo `~/.claude/conversations-viewer-config.json`:
+Por defecto la aplicacion no requiere login. Para habilitar autenticacion, crear el archivo `~/.claude/conversations-viewer-config.json`:
 
 ```json
 {
@@ -103,7 +96,7 @@ Editar el archivo `~/.claude/conversations-viewer-config.json`:
 }
 ```
 
-El archivo se crea automaticamente la primera vez que se ejecuta la app. Las sesiones duran 30 dias y se almacenan en `~/.claude/conversations-viewer-sessions.json`.
+Si el archivo no existe o tiene credenciales vacias, la app funciona sin autenticacion. Las sesiones duran 30 dias y se almacenan en `~/.claude/conversations-viewer-sessions.json`.
 
 ## Configuracion
 
