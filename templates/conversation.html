@@ -384,31 +384,45 @@
             if (searchMatches[index]) {
                 const match = searchMatches[index];
 
-                // Expand any collapsed parent containers
-                let parent = match.parentElement;
-                while (parent) {
-                    if (parent.classList.contains('collapsed')) {
-                        parent.classList.remove('collapsed');
+                // Expand any collapsed ancestors
+                let el = match;
+                while (el && el !== document.body) {
+                    // Remove collapsed class from any ancestor that has it
+                    if (el.classList && el.classList.contains('collapsed')) {
+                        el.classList.remove('collapsed');
                     }
-                    // Also expand tool blocks and thinking blocks
-                    if (parent.classList.contains('tool-block') ||
-                        parent.classList.contains('tool-block-inline') ||
-                        parent.classList.contains('content-thinking') ||
-                        parent.classList.contains('message-content')) {
-                        parent.classList.remove('collapsed');
-                        // Update toggle button text if exists
-                        const msgDiv = parent.closest('.message');
+
+                    // Check if we're inside a tool-input/tool-result whose parent tool-block is collapsed
+                    if (el.classList && (
+                        el.classList.contains('tool-input') ||
+                        el.classList.contains('tool-result') ||
+                        el.classList.contains('tool-input-inline') ||
+                        el.classList.contains('tool-result-inline')
+                    )) {
+                        const toolBlock = el.closest('.tool-block, .tool-block-inline');
+                        if (toolBlock) {
+                            toolBlock.classList.remove('collapsed');
+                        }
+                    }
+
+                    // Update toggle button text if inside a message
+                    if (el.classList && el.classList.contains('message-content')) {
+                        const msgDiv = el.closest('.message');
                         if (msgDiv) {
                             const idx = msgDiv.dataset.index;
                             const toggle = document.getElementById('toggle-' + idx);
                             if (toggle) toggle.textContent = 'Mostrar menos';
                         }
                     }
-                    parent = parent.parentElement;
+
+                    el = el.parentElement;
                 }
 
                 match.classList.add('search-highlight-current');
-                match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Small delay to let CSS update after uncollapsing
+                setTimeout(() => {
+                    match.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 50);
             }
         }
 
