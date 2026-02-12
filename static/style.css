@@ -1147,6 +1147,78 @@ footer {
     height: 20px;
 }
 
+/* Header menu styles */
+.header-menu {
+    position: relative;
+}
+
+.menu-toggle {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, color 0.2s;
+}
+
+.menu-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.menu-toggle svg {
+    width: 24px;
+    height: 24px;
+}
+
+.menu-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--shadow-hover);
+    min-width: 160px;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.menu-dropdown.show {
+    display: block;
+}
+
+.menu-item {
+    display: block;
+    padding: 0.75rem 1rem;
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: background 0.2s;
+}
+
+.menu-item:hover {
+    background: var(--bg-hover);
+}
+
+/* Theme labels in menu */
+.theme-label-dark {
+    display: none;
+}
+
+[data-theme="dark"] .theme-label-light {
+    display: none;
+}
+
+[data-theme="dark"] .theme-label-dark {
+    display: inline;
+}
+
 /* Login styles */
 .login-container {
     max-width: 400px;
