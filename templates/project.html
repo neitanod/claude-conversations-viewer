@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{.Name}} - Claude Conversations</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/i18n.js"></script>
 </head>
 <body>
     <header>
@@ -12,16 +13,16 @@
         <div class="header-controls">
             <form action="/search" method="GET" class="search-form">
                 <input type="hidden" name="project" value="{{.Path}}">
-                <input type="text" name="q" placeholder="Buscar en este proyecto..." autocomplete="off">
-                <button type="submit">Buscar</button>
+                <input type="text" name="q" data-i18n-placeholder="Search in this project..." autocomplete="off">
+                <button type="submit" data-i18n="Search">Search</button>
             </form>
-            <a href="/refresh" class="refresh-btn" title="Recargar conversaciones" onclick="saveScrollAndRefresh(event)">
+            <a href="/refresh" class="refresh-btn" data-i18n-title="Reload conversations" onclick="saveScrollAndRefresh(event)">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
             </a>
             <div class="header-menu">
-                <button class="menu-toggle" onclick="toggleMenu()" title="Menu">
+                <button class="menu-toggle" onclick="toggleMenu()" data-i18n-title="Menu">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
@@ -30,12 +31,17 @@
                     <a href="#" class="menu-item" onclick="toggleTheme(); return false;">
                         <svg class="menu-icon theme-icon-light" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                         <svg class="menu-icon theme-icon-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                        <span class="theme-label-light">Modo oscuro</span>
-                        <span class="theme-label-dark">Modo claro</span>
+                        <span class="theme-label-light" data-i18n="Dark mode">Dark mode</span>
+                        <span class="theme-label-dark" data-i18n="Light mode">Light mode</span>
+                    </a>
+                    <a href="#" class="menu-item" onclick="i18n.toggleLang(); return false;">
+                        <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                        <span class="lang-label-en">Espanol</span>
+                        <span class="lang-label-es">English</span>
                     </a>
                     <a href="/logout" class="menu-item">
                         <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                        Cerrar sesion
+                        <span data-i18n="Log out">Log out</span>
                     </a>
                 </div>
             </div>
@@ -44,7 +50,7 @@
 
     <main>
         <nav class="breadcrumb">
-            <a href="/">Proyectos</a>
+            <a href="/" data-i18n="Projects">Projects</a>
             <span>→</span>
             <span>{{.Name}}</span>
         </nav>
@@ -53,28 +59,28 @@
             <h2>{{.Name}}</h2>
             <p class="project-path">{{.Path}}</p>
             <div class="project-meta">
-                <span>{{len .Conversations}} conversaciones</span>
-                <span>{{.TotalMessages}} mensajes</span>
+                <span>{{len .Conversations}} <span data-i18n="conversations">conversations</span></span>
+                <span>{{.TotalMessages}} <span data-i18n="messages">messages</span></span>
             </div>
         </div>
 
         <div class="sort-controls">
-            <label>Ordenar por:</label>
+            <label data-i18n="Sort by:">Sort by:</label>
             <a href="?path={{.Path}}&sort=last&dir={{if and (eq .SortOrder "last") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "last"}}active{{end}}">
-                Última actividad {{if eq .SortOrder "last"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                <span data-i18n="Last activity">Last activity</span> {{if eq .SortOrder "last"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
             </a>
             <a href="?path={{.Path}}&sort=first&dir={{if and (eq .SortOrder "first") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "first"}}active{{end}}">
-                Primera actividad {{if eq .SortOrder "first"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                <span data-i18n="First activity">First activity</span> {{if eq .SortOrder "first"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
             </a>
             <a href="?path={{.Path}}&sort=name&dir={{if and (eq .SortOrder "name") (eq .SortDir "asc")}}desc{{else}}asc{{end}}" class="sort-btn {{if eq .SortOrder "name"}}active{{end}}">
-                Título {{if eq .SortOrder "name"}}{{if eq .SortDir "asc"}}▲{{else}}▼{{end}}{{end}}
+                <span data-i18n="Title">Title</span> {{if eq .SortOrder "name"}}{{if eq .SortDir "asc"}}▲{{else}}▼{{end}}{{end}}
             </a>
             <a href="?path={{.Path}}&sort=messages&dir={{if and (eq .SortOrder "messages") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "messages"}}active{{end}}">
-                Más mensajes {{if eq .SortOrder "messages"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                <span data-i18n="Most messages">Most messages</span> {{if eq .SortOrder "messages"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
             </a>
         </div>
 
-        <h3>Conversaciones</h3>
+        <h3 data-i18n="Conversations">Conversations</h3>
         <div class="conversations-list">
             {{range .SortedConversations}}
             <a href="/conversation?id={{.SessionID}}" class="conversation-card">
@@ -88,7 +94,7 @@
                 <div class="conversation-preview">{{.FirstMessage}}</div>
                 <div class="conversation-meta">
                     <span>{{formatDateTime .FirstTime}} → {{formatDateTime .LastTime}}</span>
-                    <span>{{.UserCount}} user / {{.AssistantCount}} assistant</span>
+                    <span>{{.UserCount}} user / {{.AssistantCount}} agent</span>
                     <span>{{.MessageCount}} msgs</span>
                 </div>
             </a>
@@ -101,12 +107,12 @@
     </footer>
 
     <div class="floating-nav">
-        <button class="floating-btn" onclick="scrollToTop()" title="Ir arriba">
+        <button class="floating-btn" onclick="scrollToTop()" data-i18n-title="Go to top">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
             </svg>
         </button>
-        <button class="floating-btn" onclick="scrollToBottom()" title="Ir abajo">
+        <button class="floating-btn" onclick="scrollToBottom()" data-i18n-title="Go to bottom">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>

@@ -1227,6 +1227,19 @@ footer {
     display: block;
 }
 
+/* Language labels in menu */
+.lang-label-es {
+    display: none;
+}
+
+[data-lang="es"] .lang-label-en {
+    display: none;
+}
+
+[data-lang="es"] .lang-label-es {
+    display: inline;
+}
+
 /* Theme labels in menu */
 .theme-label-dark {
     display: none;
