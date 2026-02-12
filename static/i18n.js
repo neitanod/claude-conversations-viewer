@@ -47,13 +47,14 @@ const i18n = {
         'Show less': 'Mostrar menos',
 
         // Search results
-        'Results for "[:query:]"': 'Resultados para "[:query:]"',
-        'Results for "[:query:]" in [:project:]': 'Resultados para "[:query:]" en [:project:]',
-        '[:n:] conversations found': '[:n:] conversaciones encontradas',
-        '[:n:] matches': '[:n:] coincidencias',
+        'Results for': 'Resultados para',
+        'in': 'en',
+        'conversations found': 'conversaciones encontradas',
+        'matches': 'coincidencias',
         'No conversations found with that term.': 'No se encontraron conversaciones con ese termino.',
         'Search includes user messages and agent responses.': 'La busqueda incluye mensajes de usuario y respuestas del Agente.',
-        'Expand search to all projects': 'Expandir busqueda a todos los proyectos',
+        'Search in all projects': 'Buscar en todos los proyectos',
+        'Search results': 'Resultados',
 
         // Breadcrumb
         'Conversation': 'Conversacion',
@@ -110,16 +111,20 @@ const i18n = {
         this.updateAllTexts();
     },
 
-    t(text, params = {}) {
-        // Get translation or use original text
-        let result = text;
-        if (this.currentLang !== 'en' && this[this.currentLang] && this[this.currentLang][text]) {
-            result = this[this.currentLang][text];
+    t(key, params = {}, defaultText = null) {
+        // If defaultText is provided, key is a unique identifier and defaultText is the English text
+        // Otherwise, key is both the identifier and the English text
+        const englishText = defaultText || key;
+
+        // Get translation or use English text
+        let result = englishText;
+        if (this.currentLang !== 'en' && this[this.currentLang] && this[this.currentLang][key]) {
+            result = this[this.currentLang][key];
         }
 
         // Replace [:param:] placeholders
-        for (const [key, value] of Object.entries(params)) {
-            result = result.replace(new RegExp(`\\[:${key}:\\]`, 'g'), value);
+        for (const [k, v] of Object.entries(params)) {
+            result = result.replace(new RegExp(`\\[:${k}:\\]`, 'g'), v);
         }
 
         return result;
@@ -163,8 +168,8 @@ const i18n = {
 };
 
 // Shorthand function
-function t(text, params = {}) {
-    return i18n.t(text, params);
+function t(key, params = {}, defaultText = null) {
+    return i18n.t(key, params, defaultText);
 }
 
 // Initialize on DOM ready

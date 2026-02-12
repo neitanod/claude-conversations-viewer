@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscar: {{.Query}} - Claude Conversations</title>
+    <title>{{.Query}} - Claude Conversations</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/i18n.js"></script>
 </head>
 <body>
     <header>
@@ -12,16 +13,16 @@
         <div class="header-controls">
             <form action="/search" method="GET" class="search-form">
                 {{if .Project}}<input type="hidden" name="project" value="{{.Project}}">{{end}}
-                <input type="text" name="q" value="{{.Query}}" placeholder="{{if .Project}}Buscar en {{.ProjectName}}...{{else}}Buscar en todas las conversaciones...{{end}}" autocomplete="off">
-                <button type="submit">Buscar</button>
+                <input type="text" name="q" value="{{.Query}}" data-i18n-placeholder="Search all conversations..." autocomplete="off">
+                <button type="submit" data-i18n="Search">Search</button>
             </form>
-            <a href="/refresh" class="refresh-btn" title="Recargar conversaciones" onclick="saveScrollAndRefresh(event)">
+            <a href="/refresh" class="refresh-btn" data-i18n-title="Reload conversations" onclick="saveScrollAndRefresh(event)">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
             </a>
             <div class="header-menu">
-                <button class="menu-toggle" onclick="toggleMenu()" title="Menu">
+                <button class="menu-toggle" onclick="toggleMenu()" data-i18n-title="Menu">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
@@ -30,12 +31,17 @@
                     <a href="#" class="menu-item" onclick="toggleTheme(); return false;">
                         <svg class="menu-icon theme-icon-light" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                         <svg class="menu-icon theme-icon-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-                        <span class="theme-label-light">Modo oscuro</span>
-                        <span class="theme-label-dark">Modo claro</span>
+                        <span class="theme-label-light" data-i18n="Dark mode">Dark mode</span>
+                        <span class="theme-label-dark" data-i18n="Light mode">Light mode</span>
+                    </a>
+                    <a href="#" class="menu-item" onclick="i18n.toggleLang(); return false;">
+                        <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                        <span class="lang-label-en">Espanol</span>
+                        <span class="lang-label-es">English</span>
                     </a>
                     <a href="/logout" class="menu-item">
                         <svg class="menu-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                        Cerrar sesion
+                        <span data-i18n="Log out">Log out</span>
                     </a>
                 </div>
             </div>
@@ -44,19 +50,19 @@
 
     <main>
         <nav class="breadcrumb">
-            <a href="/">Proyectos</a>
+            <a href="/" data-i18n="Projects">Projects</a>
             {{if .Project}}
             <span>→</span>
             <a href="/project?path={{.Project}}">{{.ProjectName}}</a>
             {{end}}
             <span>→</span>
-            <span>Búsqueda</span>
+            <span data-i18n="Search results">Search results</span>
         </nav>
 
         <div class="search-header">
-            <h2>Resultados para "{{.Query}}"{{if .Project}} en {{.ProjectName}}{{end}}</h2>
-            <p>{{.Count}} conversaciones encontradas</p>
-            {{if .Project}}<p><a href="/search?q={{.Query}}">Buscar en todos los proyectos</a></p>{{end}}
+            <h2><span data-i18n="Results for">Results for</span> "{{.Query}}"{{if .Project}} <span data-i18n="in">in</span> {{.ProjectName}}{{end}}</h2>
+            <p>{{.Count}} <span data-i18n="conversations found">conversations found</span></p>
+            {{if .Project}}<p><a href="/search?q={{.Query}}" data-i18n="Search in all projects">Search in all projects</a></p>{{end}}
         </div>
 
         {{if .Results}}
@@ -65,7 +71,7 @@
             <a href="/conversation?id={{.Conversation.SessionID}}" class="conversation-card">
                 <div class="conversation-project">
                     {{.Conversation.ProjectName}}
-                    <span class="match-count">{{.MatchCount}} coincidencias</span>
+                    <span class="match-count">{{.MatchCount}} <span data-i18n="matches">matches</span></span>
                 </div>
 
                 {{if .Conversation.Titles}}
@@ -84,15 +90,15 @@
 
                 <div class="conversation-meta">
                     <span>{{formatDateTime .Conversation.FirstTime}} → {{formatDateTime .Conversation.LastTime}}</span>
-                    <span>{{.Conversation.MessageCount}} mensajes</span>
+                    <span>{{.Conversation.MessageCount}} <span data-i18n="messages">messages</span></span>
                 </div>
             </a>
             {{end}}
         </div>
         {{else}}
         <div class="no-results">
-            <p>No se encontraron conversaciones con ese término.</p>
-            <p>La búsqueda incluye mensajes de usuario y respuestas del Agent.</p>
+            <p data-i18n="No conversations found with that term.">No conversations found with that term.</p>
+            <p data-i18n="Search includes user messages and agent responses.">Search includes user messages and agent responses.</p>
         </div>
         {{end}}
     </main>
@@ -102,12 +108,12 @@
     </footer>
 
     <div class="floating-nav">
-        <button class="floating-btn" onclick="scrollToTop()" title="Ir arriba">
+        <button class="floating-btn" onclick="scrollToTop()" data-i18n-title="Go to top">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
             </svg>
         </button>
-        <button class="floating-btn" onclick="scrollToBottom()" title="Ir abajo">
+        <button class="floating-btn" onclick="scrollToBottom()" data-i18n-title="Go to bottom">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
             </svg>
