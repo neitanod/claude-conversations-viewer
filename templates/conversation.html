@@ -382,8 +382,33 @@
             });
 
             if (searchMatches[index]) {
-                searchMatches[index].classList.add('search-highlight-current');
-                searchMatches[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const match = searchMatches[index];
+
+                // Expand any collapsed parent containers
+                let parent = match.parentElement;
+                while (parent) {
+                    if (parent.classList.contains('collapsed')) {
+                        parent.classList.remove('collapsed');
+                    }
+                    // Also expand tool blocks and thinking blocks
+                    if (parent.classList.contains('tool-block') ||
+                        parent.classList.contains('tool-block-inline') ||
+                        parent.classList.contains('content-thinking') ||
+                        parent.classList.contains('message-content')) {
+                        parent.classList.remove('collapsed');
+                        // Update toggle button text if exists
+                        const msgDiv = parent.closest('.message');
+                        if (msgDiv) {
+                            const idx = msgDiv.dataset.index;
+                            const toggle = document.getElementById('toggle-' + idx);
+                            if (toggle) toggle.textContent = 'Mostrar menos';
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+
+                match.classList.add('search-highlight-current');
+                match.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
 
