@@ -2,7 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -22,6 +24,125 @@ var templatesFS embed.FS
 
 //go:embed static/*
 var staticFS embed.FS
+
+// Config holds application configuration
+type Config struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Session represents a user session
+type Session struct {
+	Token     string    `json:"token"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// SessionStore manages sessions
+type SessionStore struct {
+	sessions map[string]*Session
+	filePath string
+	mu       sync.RWMutex
+}
+
+func NewSessionStore(filePath string) *SessionStore {
+	ss := &SessionStore{
+		sessions: make(map[string]*Session),
+		filePath: filePath,
+	}
+	ss.load()
+	return ss
+}
+
+func (ss *SessionStore) load() {
+	data, err := os.ReadFile(ss.filePath)
+	if err != nil {
+		return
+	}
+	var sessions map[string]*Session
+	if err := json.Unmarshal(data, &sessions); err != nil {
+		return
+	}
+	// Filter expired sessions
+	now := time.Now()
+	for token, session := range sessions {
+		if session.ExpiresAt.After(now) {
+			ss.sessions[token] = session
+		}
+	}
+}
+
+func (ss *SessionStore) save() {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	data, err := json.MarshalIndent(ss.sessions, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(ss.filePath, data, 0600)
+}
+
+func (ss *SessionStore) Create() string {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+
+	token := generateToken()
+	ss.sessions[token] = &Session{
+		Token:     token,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour), // 30 days
+	}
+	go ss.save()
+	return token
+}
+
+func (ss *SessionStore) Validate(token string) bool {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+
+	session, exists := ss.sessions[token]
+	if !exists {
+		return false
+	}
+	return session.ExpiresAt.After(time.Now())
+}
+
+func (ss *SessionStore) Delete(token string) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	delete(ss.sessions, token)
+	go ss.save()
+}
+
+func generateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func loadConfig(configPath string) (*Config, error) {
+	// Default config
+	config := &Config{
+		Username: "user",
+		Password: "conversations#",
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Create default config file
+			defaultData, _ := json.MarshalIndent(config, "", "  ")
+			os.WriteFile(configPath, defaultData, 0600)
+			return config, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, err
+	}
+	return config, nil
+}
 
 // ContentBlock represents either text or a tool invocation (in order)
 type ContentBlock struct {
@@ -108,6 +229,8 @@ type App struct {
 	projects      map[string]*Project
 	cache         *MetadataCache
 	mu            sync.RWMutex
+	config        *Config
+	sessions      *SessionStore
 }
 
 // RawMessage types for parsing JSONL
@@ -133,12 +256,26 @@ func NewApp() (*App, error) {
 	}
 
 	claudeDir := filepath.Join(homeDir, ".claude")
+
+	// Load config
+	configPath := filepath.Join(claudeDir, "conversations-viewer-config.json")
+	config, err := loadConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Initialize session store
+	sessionsPath := filepath.Join(claudeDir, "conversations-viewer-sessions.json")
+	sessions := NewSessionStore(sessionsPath)
+
 	app := &App{
 		claudeDir:     claudeDir,
 		metadataPath:  filepath.Join(claudeDir, "conversations-viewer-cache.json"),
 		conversations: make(map[string]*Conversation),
 		projects:      make(map[string]*Project),
 		cache:         &MetadataCache{Version: 1, Conversations: make(map[string]*ConversationMeta)},
+		config:        config,
+		sessions:      sessions,
 	}
 
 	// Load existing cache
@@ -1054,6 +1191,87 @@ func (a *App) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, referer, http.StatusFound)
 }
 
+// Authentication handlers
+
+func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		// Show login form
+		tmpl, err := template.New("login.html").Funcs(templateFuncs).ParseFS(templatesFS, "templates/login.html")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data := struct {
+			Error string
+		}{}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		tmpl.Execute(w, data)
+		return
+	}
+
+	// POST - process login
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	if username == a.config.Username && password == a.config.Password {
+		// Create session
+		token := a.sessions.Create()
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session",
+			Value:    token,
+			Path:     "/",
+			MaxAge:   30 * 24 * 60 * 60, // 30 days
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	// Invalid credentials
+	tmpl, _ := template.New("login.html").Funcs(templateFuncs).ParseFS(templatesFS, "templates/login.html")
+	data := struct {
+		Error string
+	}{
+		Error: "Usuario o contraseña incorrectos",
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	tmpl.Execute(w, data)
+}
+
+func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session")
+	if err == nil {
+		a.sessions.Delete(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:   "session",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+func (a *App) isAuthenticated(r *http.Request) bool {
+	cookie, err := r.Cookie("session")
+	if err != nil {
+		return false
+	}
+	return a.sessions.Validate(cookie.Value)
+}
+
+func (a *App) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !a.isAuthenticated(r) {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		handler(w, r)
+	}
+}
+
 func main() {
 	port := "8042"
 	if len(os.Args) > 1 {
@@ -1074,14 +1292,20 @@ func main() {
 	staticContent, _ := fs.Sub(staticFS, "static")
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticContent))))
 
-	// Routes
-	http.HandleFunc("/", app.handleIndex)
-	http.HandleFunc("/project", app.handleProject)
-	http.HandleFunc("/conversation", app.handleConversation)
-	http.HandleFunc("/search", app.handleSearch)
-	http.HandleFunc("/refresh", app.handleRefresh)
-	http.HandleFunc("/api/projects", app.handleAPIProjects)
-	http.HandleFunc("/api/conversation", app.handleAPIConversation)
+	// Auth routes (no authentication required)
+	http.HandleFunc("/login", app.handleLogin)
+	http.HandleFunc("/logout", app.handleLogout)
+
+	// Protected routes
+	http.HandleFunc("/", app.requireAuth(app.handleIndex))
+	http.HandleFunc("/project", app.requireAuth(app.handleProject))
+	http.HandleFunc("/conversation", app.requireAuth(app.handleConversation))
+	http.HandleFunc("/search", app.requireAuth(app.handleSearch))
+	http.HandleFunc("/refresh", app.requireAuth(app.handleRefresh))
+	http.HandleFunc("/api/projects", app.requireAuth(app.handleAPIProjects))
+	http.HandleFunc("/api/conversation", app.requireAuth(app.handleAPIConversation))
+
+	log.Printf("Config file: %s", filepath.Join(app.claudeDir, "conversations-viewer-config.json"))
 
 	addr := ":" + port
 	log.Printf("Starting Claude Conversations Viewer on http://localhost%s", addr)

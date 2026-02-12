@@ -29,16 +29,20 @@ cd ~/robotin/apps/claude-conversations-viewer
 
 Luego abrir http://localhost:8042 en el navegador.
 
-## Características
+## Caracteristicas
 
+- Autenticacion con usuario/password persistente (sesiones de 30 dias)
 - Vista de todos los proyectos con conversaciones
-- Navegación por proyecto y conversación individual
-- Búsqueda full-text en mensajes de usuario y Claude
-- Ordenamiento por última/primera actividad, nombre, cantidad de mensajes
+- Navegacion por proyecto y conversacion individual
+- Busqueda full-text en mensajes de usuario y Agent
+- Busqueda por proyecto (en pagina de proyecto)
+- Busqueda local en conversacion (JavaScript)
+- Navegacion Vim-style: j/k, gg/G, v (seleccion), y (yank), h/l (colapsar/expandir)
+- Ordenamiento por ultima/primera actividad, nombre, cantidad de mensajes
 - Toggle ascendente/descendente clickeando en el mismo criterio
 - Modo claro y oscuro con persistencia
 - Contenido colapsable para mensajes largos
-- Cache de metadatos para carga rápida
+- Cache de metadatos para carga rapida
 
 ## Ejemplos
 
@@ -81,10 +85,32 @@ go test -v -cover
 
 Cobertura actual: 82.7%
 
-## Configuración
+## Autenticacion
+
+La aplicacion requiere login para acceder. Las credenciales por defecto son:
+
+- **Usuario:** `user`
+- **Password:** `conversations#`
+
+### Cambiar credenciales
+
+Editar el archivo `~/.claude/conversations-viewer-config.json`:
+
+```json
+{
+  "username": "mi_usuario",
+  "password": "mi_password_seguro"
+}
+```
+
+El archivo se crea automaticamente la primera vez que se ejecuta la app. Las sesiones duran 30 dias y se almacenan en `~/.claude/conversations-viewer-sessions.json`.
+
+## Configuracion
 
 - **Puerto:** Primer argumento CLI (default: 8042)
-- **Cache:** `~/.claude/conversations-viewer-cache.json` (se crea automáticamente)
+- **Cache:** `~/.claude/conversations-viewer-cache.json` (se crea automaticamente)
+- **Config:** `~/.claude/conversations-viewer-config.json` (credenciales)
+- **Sesiones:** `~/.claude/conversations-viewer-sessions.json` (tokens de sesion)
 - **Tema:** Se guarda en localStorage del navegador
 
 ## Estructura de archivos

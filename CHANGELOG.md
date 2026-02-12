@@ -2,8 +2,18 @@
 
 ## 2026-02-12
 
+### Autenticacion
+- Sistema de login con usuario/password
+- Credenciales por defecto: `user` / `conversations#`
+- Configuracion en `~/.claude/conversations-viewer-config.json`
+- Sesiones persistentes de 30 dias en `~/.claude/conversations-viewer-sessions.json`
+
+### Renombrado de Claude a Agent
+- Los mensajes del asistente ahora muestran "Agent" en lugar de "Claude"
+- Cambio en todos los templates y funciones de yank
+
 ### Navegacion Vim mejorada
-- **j/k**: Ahora posicionan el mensaje seleccionado a 20px del tope del viewport (antes lo centraban, lo cual era molesto para mensajes largos)
+- **j/k**: Ahora posicionan el mensaje debajo del header + 20px (antes se centraba o quedaba oculto)
 - **J/K** (mayusculas): Agregado scroll normal del browser (80px por pulsacion) para poder leer mensajes largos sin cambiar de item
 - Las flechas arriba/abajo siguen funcionando como scroll normal del browser
 

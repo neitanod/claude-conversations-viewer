@@ -61,7 +61,7 @@
 
             <div class="conversation-stats">
                 <span>{{.Conversation.UserCount}} mensajes de usuario</span>
-                <span>{{.Conversation.AssistantCount}} respuestas de Claude</span>
+                <span>{{.Conversation.AssistantCount}} respuestas del Agent</span>
                 <span>{{.Conversation.MessageCount}} total</span>
             </div>
         </div>
@@ -70,7 +70,7 @@
             {{range $i, $msg := .Messages}}
             <div class="message {{if eq .Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{$i}}">
                 <div class="message-header" onclick="toggleMessage({{$i}})">
-                    <span class="message-sender">{{if eq .Type "user"}}Usuario{{else}}Claude{{end}}</span>
+                    <span class="message-sender">{{if eq .Type "user"}}Usuario{{else}}Agent{{end}}</span>
                     <span class="message-time">{{formatDate .Timestamp}} {{formatTime .Timestamp}}</span>
                 </div>
                 {{if .ContentBlocks}}
@@ -415,9 +415,11 @@
             const msg = vim.messages[index];
             msg.classList.add('vim-focused');
 
-            // Scroll so item is near top of viewport (20px from top)
+            // Scroll so item is near top of viewport (below header + 20px margin)
+            const header = document.querySelector('header');
+            const headerHeight = header ? header.offsetHeight : 60;
             const rect = msg.getBoundingClientRect();
-            const targetY = window.scrollY + rect.top - 20;
+            const targetY = window.scrollY + rect.top - headerHeight - 20;
             window.scrollTo({ top: targetY, behavior: 'smooth' });
 
             // Update selection if in selection mode
@@ -508,7 +510,7 @@
 
             const texts = indicesToYank.map(i => {
                 const msg = vim.messages[i];
-                const sender = msg.classList.contains('user-message') ? 'Usuario' : 'Claude';
+                const sender = msg.classList.contains('user-message') ? 'Usuario' : 'Agent';
                 const content = msg.querySelector('.message-content-blocks, .message-content');
                 const text = content ? content.innerText : '';
                 return `[${sender}]\n${text}`;
