@@ -5,16 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{if .Conversation.Titles}}{{index .Conversation.Titles 0}}{{else}}Conversación{{end}} - Claude Conversations</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
     <header>
         <h1><a href="/">Claude Conversations</a></h1>
         <div class="header-controls">
-            <form action="/search" method="GET" class="search-form">
-                <input type="text" name="q" placeholder="Buscar en todas las conversaciones..." autocomplete="off">
-                <button type="submit">Buscar</button>
-            </form>
-            <a href="/refresh" class="refresh-btn" title="Recargar conversaciones">
+            <div class="search-form local-search">
+                <input type="text" id="localSearch" placeholder="Buscar en esta conversación..." autocomplete="off" onkeyup="searchInConversation(this.value)">
+                <span id="searchCount" class="search-count"></span>
+                <button type="button" onclick="navigateSearch(-1)" title="Anterior">▲</button>
+                <button type="button" onclick="navigateSearch(1)" title="Siguiente">▼</button>
+                <button type="button" onclick="clearSearch()" title="Limpiar">✕</button>
+            </div>
+            <a href="/refresh" class="refresh-btn" title="Recargar conversaciones" onclick="saveScrollAndRefresh(event)">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
@@ -69,11 +73,40 @@
                     <span class="message-sender">{{if eq .Type "user"}}Usuario{{else}}Claude{{end}}</span>
                     <span class="message-time">{{formatDate .Timestamp}} {{formatTime .Timestamp}}</span>
                 </div>
-                <div class="message-content {{if gt (len .Content) 500}}collapsed{{end}}" id="content-{{$i}}">{{.Content}}</div>
+                {{if .ContentBlocks}}
+                <div class="message-content-blocks" id="content-{{$i}}">
+                    {{range .ContentBlocks}}
+                    {{if eq .Type "text"}}
+                    <div class="content-text">{{.Text}}</div>
+                    {{else if eq .Type "thinking"}}
+                    <div class="content-thinking">{{.Text}}</div>
+                    {{else if eq .Type "tool"}}
+                    <div class="tool-block-inline">
+                        <div class="tool-header-inline">🔧 {{.ToolName}}</div>
+                        {{if .Input}}<pre class="tool-input-inline">{{.Input}}</pre>{{end}}
+                        {{if .Result}}<pre class="tool-result-inline">{{.Result}}</pre>{{end}}
+                    </div>
+                    {{end}}
+                    {{end}}
+                </div>
+                {{else if .Content}}
+                <div class="message-content {{if gt (len .Content) 500}}collapsed{{end}}" id="content-legacy-{{$i}}">{{.Content}}</div>
                 {{if gt (len .Content) 500}}
                 <div class="message-toggle" id="toggle-{{$i}}" onclick="toggleMessage({{$i}})">
                     Mostrar más
                 </div>
+                {{end}}
+                {{if .ToolBlocks}}
+                <div class="tool-blocks">
+                    {{range .ToolBlocks}}
+                    <div class="tool-block">
+                        <div class="tool-header">🔧 {{.Name}}</div>
+                        {{if .Input}}<pre class="tool-input">{{.Input}}</pre>{{end}}
+                        {{if .Result}}<pre class="tool-result">{{.Result}}</pre>{{end}}
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
                 {{end}}
             </div>
             {{end}}
@@ -83,6 +116,66 @@
     <footer>
         <p>Claude Conversations Viewer</p>
     </footer>
+
+    <div class="floating-nav">
+        <button class="floating-btn" onclick="scrollToTop()" title="Ir arriba">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+            </svg>
+        </button>
+        <button class="floating-btn" onclick="scrollToBottom()" title="Ir abajo">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- Vim mode indicator -->
+    <div id="vimModeIndicator" class="vim-mode-indicator"></div>
+
+    <!-- Help modal -->
+    <div id="helpModal" class="help-modal" style="display: none;">
+        <div class="help-modal-content">
+            <h3>Atajos de teclado (Vim-style)</h3>
+            <div class="help-columns">
+                <div class="help-section">
+                    <h4>Navegación</h4>
+                    <div class="help-row"><kbd>j</kbd> Siguiente mensaje</div>
+                    <div class="help-row"><kbd>k</kbd> Mensaje anterior</div>
+                    <div class="help-row"><kbd>gg</kbd> Primer mensaje</div>
+                    <div class="help-row"><kbd>G</kbd> Último mensaje</div>
+                    <div class="help-row"><kbd>Ctrl+d</kbd> Bajar media página</div>
+                    <div class="help-row"><kbd>Ctrl+u</kbd> Subir media página</div>
+                    <div class="help-row"><kbd>J</kbd><kbd>K</kbd> Scroll normal del browser</div>
+                    <div class="help-row"><kbd>↑</kbd><kbd>↓</kbd> Scroll normal del browser</div>
+                </div>
+                <div class="help-section">
+                    <h4>Expandir/Colapsar</h4>
+                    <div class="help-row"><kbd>l</kbd> Expandir secciones del mensaje</div>
+                    <div class="help-row"><kbd>h</kbd> Colapsar secciones del mensaje</div>
+                    <div class="help-row"><kbd>Enter</kbd> Toggle expansión mensaje</div>
+                </div>
+                <div class="help-section">
+                    <h4>Selección y Yank</h4>
+                    <div class="help-row"><kbd>v</kbd> Modo selección (toggle)</div>
+                    <div class="help-row"><kbd>y</kbd> Copiar mensaje(s) seleccionado(s)</div>
+                    <div class="help-row"><kbd>Y</kbd> Copiar mensaje actual</div>
+                    <div class="help-row"><kbd>Esc</kbd> Salir de modo selección</div>
+                </div>
+                <div class="help-section">
+                    <h4>Búsqueda</h4>
+                    <div class="help-row"><kbd>/</kbd> o <kbd>Ctrl+f</kbd> Buscar</div>
+                    <div class="help-row"><kbd>n</kbd> Siguiente coincidencia</div>
+                    <div class="help-row"><kbd>N</kbd> Coincidencia anterior</div>
+                </div>
+                <div class="help-section">
+                    <h4>Otros</h4>
+                    <div class="help-row"><kbd>H</kbd> o <kbd>?</kbd> Mostrar/ocultar ayuda</div>
+                </div>
+            </div>
+            <p class="help-footer">Presiona <kbd>H</kbd>, <kbd>?</kbd> o <kbd>Esc</kbd> para cerrar</p>
+        </div>
+    </div>
 
     <script>
         function toggleTheme() {
@@ -109,6 +202,597 @@
         const savedTheme = localStorage.getItem('theme') ||
             (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
         document.documentElement.setAttribute('data-theme', savedTheme);
+
+        function scrollToTop() {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function scrollToBottom() {
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        // Scroll persistence for refresh
+        function saveScrollAndRefresh(e) {
+            e.preventDefault();
+            sessionStorage.setItem('scrollPos', window.scrollY);
+            window.location.href = '/refresh';
+        }
+
+        (function() {
+            const scrollPos = sessionStorage.getItem('scrollPos');
+            if (scrollPos) {
+                sessionStorage.removeItem('scrollPos');
+                window.scrollTo(0, parseInt(scrollPos));
+            }
+        })();
+
+        // Local search functionality
+        let searchMatches = [];
+        let currentMatchIndex = -1;
+
+        function searchInConversation(query) {
+            clearHighlights();
+            searchMatches = [];
+            currentMatchIndex = -1;
+
+            if (!query || query.length < 2) {
+                document.getElementById('searchCount').textContent = '';
+                return;
+            }
+
+            const messages = document.querySelectorAll('.message');
+            const lowerQuery = query.toLowerCase();
+
+            messages.forEach(msg => {
+                const textNodes = getTextNodes(msg);
+                textNodes.forEach(node => {
+                    const text = node.textContent;
+                    const lowerText = text.toLowerCase();
+                    let index = 0;
+
+                    while ((index = lowerText.indexOf(lowerQuery, index)) !== -1) {
+                        searchMatches.push({ node, index, length: query.length });
+                        index += query.length;
+                    }
+                });
+            });
+
+            if (searchMatches.length > 0) {
+                highlightMatches(query);
+                currentMatchIndex = 0;
+                scrollToMatch(0);
+                updateSearchCount();
+            } else {
+                document.getElementById('searchCount').textContent = 'Sin resultados';
+            }
+        }
+
+        function getTextNodes(element) {
+            const nodes = [];
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            while (node = walker.nextNode()) {
+                if (node.textContent.trim()) {
+                    nodes.push(node);
+                }
+            }
+            return nodes;
+        }
+
+        function highlightMatches(query) {
+            const messages = document.querySelectorAll('.message');
+            const lowerQuery = query.toLowerCase();
+
+            messages.forEach(msg => {
+                highlightInElement(msg, query, lowerQuery);
+            });
+
+            // Rebuild matches array with highlighted spans
+            searchMatches = Array.from(document.querySelectorAll('.search-highlight'));
+        }
+
+        function highlightInElement(element, query, lowerQuery) {
+            const textNodes = [];
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            while (node = walker.nextNode()) {
+                if (node.textContent.trim() && !node.parentElement.classList.contains('search-highlight')) {
+                    textNodes.push(node);
+                }
+            }
+
+            textNodes.forEach(textNode => {
+                const text = textNode.textContent;
+                const lowerText = text.toLowerCase();
+                if (lowerText.includes(lowerQuery)) {
+                    const parts = [];
+                    let lastIndex = 0;
+                    let index = 0;
+
+                    while ((index = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
+                        if (index > lastIndex) {
+                            parts.push(document.createTextNode(text.substring(lastIndex, index)));
+                        }
+                        const span = document.createElement('span');
+                        span.className = 'search-highlight';
+                        span.textContent = text.substring(index, index + query.length);
+                        parts.push(span);
+                        lastIndex = index + query.length;
+                    }
+
+                    if (lastIndex < text.length) {
+                        parts.push(document.createTextNode(text.substring(lastIndex)));
+                    }
+
+                    const parent = textNode.parentNode;
+                    parts.forEach(part => parent.insertBefore(part, textNode));
+                    parent.removeChild(textNode);
+                }
+            });
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.search-highlight').forEach(span => {
+                const parent = span.parentNode;
+                parent.replaceChild(document.createTextNode(span.textContent), span);
+                parent.normalize();
+            });
+            document.querySelectorAll('.search-highlight-current').forEach(el => {
+                el.classList.remove('search-highlight-current');
+            });
+        }
+
+        function navigateSearch(direction) {
+            if (searchMatches.length === 0) return;
+
+            currentMatchIndex += direction;
+            if (currentMatchIndex >= searchMatches.length) currentMatchIndex = 0;
+            if (currentMatchIndex < 0) currentMatchIndex = searchMatches.length - 1;
+
+            scrollToMatch(currentMatchIndex);
+            updateSearchCount();
+        }
+
+        function scrollToMatch(index) {
+            document.querySelectorAll('.search-highlight-current').forEach(el => {
+                el.classList.remove('search-highlight-current');
+            });
+
+            if (searchMatches[index]) {
+                searchMatches[index].classList.add('search-highlight-current');
+                searchMatches[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function updateSearchCount() {
+            const count = document.getElementById('searchCount');
+            if (searchMatches.length > 0) {
+                count.textContent = `${currentMatchIndex + 1}/${searchMatches.length}`;
+            } else {
+                count.textContent = '';
+            }
+        }
+
+        function clearSearch() {
+            document.getElementById('localSearch').value = '';
+            clearHighlights();
+            searchMatches = [];
+            currentMatchIndex = -1;
+            document.getElementById('searchCount').textContent = '';
+        }
+
+        // =====================
+        // VIM-STYLE NAVIGATION
+        // =====================
+
+        const vim = {
+            focusedIndex: -1,
+            selectionMode: false,
+            selectedIndices: new Set(),
+            selectionAnchor: -1,
+            lastKey: '',
+            lastKeyTime: 0,
+            messages: [],
+            helpVisible: false
+        };
+
+        function initVim() {
+            vim.messages = Array.from(document.querySelectorAll('.message'));
+            if (vim.messages.length > 0) {
+                setFocus(0);
+            }
+        }
+
+        function setFocus(index) {
+            if (index < 0 || index >= vim.messages.length) return;
+
+            // Remove focus from previous
+            if (vim.focusedIndex >= 0 && vim.messages[vim.focusedIndex]) {
+                vim.messages[vim.focusedIndex].classList.remove('vim-focused');
+            }
+
+            vim.focusedIndex = index;
+            const msg = vim.messages[index];
+            msg.classList.add('vim-focused');
+
+            // Scroll so item is near top of viewport (20px from top)
+            const rect = msg.getBoundingClientRect();
+            const targetY = window.scrollY + rect.top - 20;
+            window.scrollTo({ top: targetY, behavior: 'smooth' });
+
+            // Update selection if in selection mode
+            if (vim.selectionMode) {
+                updateSelectionRange();
+            }
+
+            updateModeIndicator();
+        }
+
+        function moveFocus(delta) {
+            const newIndex = Math.max(0, Math.min(vim.messages.length - 1, vim.focusedIndex + delta));
+            setFocus(newIndex);
+        }
+
+        function goToFirst() {
+            setFocus(0);
+        }
+
+        function goToLast() {
+            setFocus(vim.messages.length - 1);
+        }
+
+        function toggleSelectionMode() {
+            vim.selectionMode = !vim.selectionMode;
+
+            if (vim.selectionMode) {
+                // Entering selection mode
+                vim.selectionAnchor = vim.focusedIndex;
+                vim.selectedIndices.clear();
+                vim.selectedIndices.add(vim.focusedIndex);
+                updateSelectionVisuals();
+            } else {
+                // Exiting selection mode
+                clearSelection();
+            }
+
+            updateModeIndicator();
+        }
+
+        function exitSelectionMode() {
+            if (vim.selectionMode) {
+                vim.selectionMode = false;
+                clearSelection();
+                updateModeIndicator();
+            }
+        }
+
+        function updateSelectionRange() {
+            if (!vim.selectionMode) return;
+
+            vim.selectedIndices.clear();
+            const start = Math.min(vim.selectionAnchor, vim.focusedIndex);
+            const end = Math.max(vim.selectionAnchor, vim.focusedIndex);
+
+            for (let i = start; i <= end; i++) {
+                vim.selectedIndices.add(i);
+            }
+
+            updateSelectionVisuals();
+        }
+
+        function updateSelectionVisuals() {
+            vim.messages.forEach((msg, i) => {
+                if (vim.selectedIndices.has(i)) {
+                    msg.classList.add('vim-selected');
+                } else {
+                    msg.classList.remove('vim-selected');
+                }
+            });
+        }
+
+        function clearSelection() {
+            vim.selectedIndices.clear();
+            vim.messages.forEach(msg => msg.classList.remove('vim-selected'));
+        }
+
+        function yankSelected() {
+            let indicesToYank;
+
+            if (vim.selectionMode && vim.selectedIndices.size > 0) {
+                indicesToYank = Array.from(vim.selectedIndices).sort((a, b) => a - b);
+            } else if (vim.focusedIndex >= 0) {
+                indicesToYank = [vim.focusedIndex];
+            } else {
+                return;
+            }
+
+            const texts = indicesToYank.map(i => {
+                const msg = vim.messages[i];
+                const sender = msg.classList.contains('user-message') ? 'Usuario' : 'Claude';
+                const content = msg.querySelector('.message-content-blocks, .message-content');
+                const text = content ? content.innerText : '';
+                return `[${sender}]\n${text}`;
+            });
+
+            const fullText = texts.join('\n\n---\n\n');
+
+            navigator.clipboard.writeText(fullText).then(() => {
+                showNotification(`Copiado ${indicesToYank.length} mensaje(s)`);
+
+                // Flash effect
+                indicesToYank.forEach(i => {
+                    vim.messages[i].classList.add('vim-yanked');
+                    setTimeout(() => vim.messages[i].classList.remove('vim-yanked'), 300);
+                });
+            }).catch(err => {
+                showNotification('Error al copiar', true);
+            });
+
+            // Exit selection mode after yank
+            if (vim.selectionMode) {
+                exitSelectionMode();
+            }
+        }
+
+        function yankCurrent() {
+            if (vim.focusedIndex < 0) return;
+
+            const msg = vim.messages[vim.focusedIndex];
+            const sender = msg.classList.contains('user-message') ? 'Usuario' : 'Claude';
+            const content = msg.querySelector('.message-content-blocks, .message-content');
+            const text = content ? content.innerText : '';
+            const fullText = `[${sender}]\n${text}`;
+
+            navigator.clipboard.writeText(fullText).then(() => {
+                showNotification('Copiado 1 mensaje');
+                msg.classList.add('vim-yanked');
+                setTimeout(() => msg.classList.remove('vim-yanked'), 300);
+            }).catch(err => {
+                showNotification('Error al copiar', true);
+            });
+        }
+
+        function showNotification(text, isError = false) {
+            const indicator = document.getElementById('vimModeIndicator');
+            indicator.textContent = text;
+            indicator.className = 'vim-mode-indicator vim-notification' + (isError ? ' vim-error' : '');
+            indicator.style.opacity = '1';
+
+            setTimeout(() => {
+                updateModeIndicator();
+            }, 1500);
+        }
+
+        function updateModeIndicator() {
+            const indicator = document.getElementById('vimModeIndicator');
+
+            if (vim.selectionMode) {
+                const count = vim.selectedIndices.size;
+                indicator.textContent = `-- VISUAL -- (${count} seleccionado${count !== 1 ? 's' : ''})`;
+                indicator.className = 'vim-mode-indicator vim-visual-mode';
+                indicator.style.opacity = '1';
+            } else if (vim.focusedIndex >= 0) {
+                indicator.textContent = `${vim.focusedIndex + 1}/${vim.messages.length}`;
+                indicator.className = 'vim-mode-indicator';
+                indicator.style.opacity = '1';
+            } else {
+                indicator.style.opacity = '0';
+            }
+        }
+
+        function toggleHelp() {
+            const modal = document.getElementById('helpModal');
+            vim.helpVisible = !vim.helpVisible;
+            modal.style.display = vim.helpVisible ? 'flex' : 'none';
+        }
+
+        function hideHelp() {
+            const modal = document.getElementById('helpModal');
+            vim.helpVisible = false;
+            modal.style.display = 'none';
+        }
+
+        function pageMove(direction) {
+            // Move roughly half a page worth of messages
+            const visibleHeight = window.innerHeight;
+            const avgMessageHeight = 150; // approximate
+            const messagesToMove = Math.max(1, Math.floor(visibleHeight / avgMessageHeight / 2));
+            moveFocus(direction * messagesToMove);
+        }
+
+        function collapseCurrentMessage() {
+            if (vim.focusedIndex < 0) return;
+            const msg = vim.messages[vim.focusedIndex];
+
+            // Collapse main content if it has the collapsed class capability
+            const content = msg.querySelector('.message-content');
+            if (content && !content.classList.contains('collapsed')) {
+                content.classList.add('collapsed');
+                const toggle = msg.querySelector('.message-toggle');
+                if (toggle) toggle.textContent = 'Mostrar más';
+            }
+
+            // Collapse all tool blocks
+            const toolBlocks = msg.querySelectorAll('.tool-block, .tool-block-inline');
+            toolBlocks.forEach(block => {
+                block.classList.add('collapsed');
+            });
+
+            // Collapse thinking blocks
+            const thinkingBlocks = msg.querySelectorAll('.content-thinking');
+            thinkingBlocks.forEach(block => {
+                block.classList.add('collapsed');
+            });
+        }
+
+        function expandCurrentMessage() {
+            if (vim.focusedIndex < 0) return;
+            const msg = vim.messages[vim.focusedIndex];
+
+            // Expand main content
+            const content = msg.querySelector('.message-content');
+            if (content && content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                const toggle = msg.querySelector('.message-toggle');
+                if (toggle) toggle.textContent = 'Mostrar menos';
+            }
+
+            // Expand all tool blocks
+            const toolBlocks = msg.querySelectorAll('.tool-block, .tool-block-inline');
+            toolBlocks.forEach(block => {
+                block.classList.remove('collapsed');
+            });
+
+            // Expand thinking blocks
+            const thinkingBlocks = msg.querySelectorAll('.content-thinking');
+            thinkingBlocks.forEach(block => {
+                block.classList.remove('collapsed');
+            });
+        }
+
+        // Main keyboard handler
+        document.addEventListener('keydown', function(e) {
+            // Ignore if typing in input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                if (e.key === 'Escape') {
+                    e.target.blur();
+                    clearSearch();
+                }
+                if (e.key === 'Enter' && e.target.id === 'localSearch') {
+                    e.preventDefault();
+                    navigateSearch(e.shiftKey ? -1 : 1);
+                }
+                return;
+            }
+
+            const key = e.key;
+            const now = Date.now();
+
+            // Check for gg (go to top)
+            if (key === 'g' && vim.lastKey === 'g' && (now - vim.lastKeyTime) < 500) {
+                e.preventDefault();
+                goToFirst();
+                vim.lastKey = '';
+                return;
+            }
+
+            vim.lastKey = key;
+            vim.lastKeyTime = now;
+
+            // Help modal (H mayúscula o ?)
+            if (key === 'H' || key === '?') {
+                e.preventDefault();
+                toggleHelp();
+                return;
+            }
+
+            // Close help with Escape
+            if (key === 'Escape') {
+                if (vim.helpVisible) {
+                    hideHelp();
+                } else if (vim.selectionMode) {
+                    exitSelectionMode();
+                } else {
+                    clearSearch();
+                }
+                return;
+            }
+
+            // Don't process vim keys if help is open
+            if (vim.helpVisible) {
+                return;
+            }
+
+            // Navigation (j/k for messages, J/K for normal scroll)
+            if (key === 'j') {
+                e.preventDefault();
+                moveFocus(1);
+            } else if (key === 'k') {
+                e.preventDefault();
+                moveFocus(-1);
+            } else if (key === 'J') {
+                // Normal scroll down (like arrow down)
+                window.scrollBy({ top: 80, behavior: 'smooth' });
+            } else if (key === 'K') {
+                // Normal scroll up (like arrow up)
+                window.scrollBy({ top: -80, behavior: 'smooth' });
+            } else if (key === 'h') {
+                // Collapse all sections in current message
+                e.preventDefault();
+                collapseCurrentMessage();
+            } else if (key === 'l') {
+                // Expand all sections in current message
+                e.preventDefault();
+                expandCurrentMessage();
+            } else if (key === 'G') {
+                e.preventDefault();
+                goToLast();
+            } else if (key === 'd' && e.ctrlKey) {
+                e.preventDefault();
+                pageMove(1);
+            } else if (key === 'u' && e.ctrlKey) {
+                e.preventDefault();
+                pageMove(-1);
+            }
+
+            // Selection mode
+            else if (key === 'v') {
+                e.preventDefault();
+                toggleSelectionMode();
+            }
+
+            // Yank
+            else if (key === 'y') {
+                e.preventDefault();
+                yankSelected();
+            } else if (key === 'Y') {
+                e.preventDefault();
+                yankCurrent();
+            }
+
+            // Search
+            else if (key === '/' || (key === 'f' && (e.ctrlKey || e.metaKey))) {
+                e.preventDefault();
+                document.getElementById('localSearch').focus();
+            } else if (key === 'n') {
+                e.preventDefault();
+                navigateSearch(1);
+            } else if (key === 'N') {
+                e.preventDefault();
+                navigateSearch(-1);
+            }
+
+            // Enter to toggle message expansion
+            else if (key === 'Enter' && vim.focusedIndex >= 0) {
+                e.preventDefault();
+                toggleMessage(vim.focusedIndex);
+            }
+        });
+
+        // Click on message to focus
+        document.addEventListener('click', function(e) {
+            const msg = e.target.closest('.message');
+            if (msg) {
+                const index = vim.messages.indexOf(msg);
+                if (index >= 0) {
+                    setFocus(index);
+                }
+            }
+        });
+
+        // Close help modal when clicking outside
+        document.getElementById('helpModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideHelp();
+            }
+        });
+
+        // Initialize vim navigation on load
+        document.addEventListener('DOMContentLoaded', initVim);
+        // Also init immediately in case DOM is already loaded
+        if (document.readyState !== 'loading') {
+            initVim();
+        }
     </script>
 </body>
 </html>

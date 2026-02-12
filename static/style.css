@@ -57,7 +57,6 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     min-height: 100vh;
-    transition: background-color 0.3s, color 0.3s;
 }
 
 /* Header */
@@ -105,7 +104,7 @@ header h1 a {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     color: var(--text-primary);
     text-decoration: none;
 }
@@ -131,7 +130,7 @@ header h1 a {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: transform 0.2s, border-color 0.2s;
     color: var(--text-primary);
 }
 
@@ -169,7 +168,7 @@ header h1 a {
     color: var(--text-primary);
     width: 300px;
     font-size: 0.95rem;
-    transition: all 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .search-form input:focus {
@@ -191,7 +190,7 @@ header h1 a {
     border-radius: 8px;
     cursor: pointer;
     font-weight: 500;
-    transition: all 0.2s;
+    transition: transform 0.2s;
 }
 
 .search-form button:hover,
@@ -208,6 +207,211 @@ header h1 a {
 
 .btn-secondary:hover {
     background: var(--bg-hover);
+}
+
+/* Local search (in-page) */
+.local-search {
+    align-items: center;
+}
+
+.local-search .search-count {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 60px;
+    text-align: center;
+}
+
+.local-search button {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+    min-width: 32px;
+}
+
+/* Search highlight */
+.search-highlight {
+    background: #fef08a;
+    color: #000;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+.search-highlight-current {
+    background: #f97316;
+    color: #fff;
+    box-shadow: 0 0 0 2px #f97316;
+}
+
+[data-theme="dark"] .search-highlight {
+    background: #854d0e;
+    color: #fef9c3;
+}
+
+[data-theme="dark"] .search-highlight-current {
+    background: #ea580c;
+    color: #fff;
+    box-shadow: 0 0 0 2px #ea580c;
+}
+
+/* =====================
+   VIM-STYLE NAVIGATION
+   ===================== */
+
+/* Focused message */
+.message.vim-focused {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Selected messages (visual mode) */
+.message.vim-selected {
+    background: var(--accent-light) !important;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Yank flash animation */
+.message.vim-yanked {
+    animation: yankFlash 0.3s ease-out;
+}
+
+@keyframes yankFlash {
+    0% { background: #22c55e; }
+    100% { background: inherit; }
+}
+
+[data-theme="dark"] .message.vim-yanked {
+    animation: yankFlashDark 0.3s ease-out;
+}
+
+@keyframes yankFlashDark {
+    0% { background: #166534; }
+    100% { background: inherit; }
+}
+
+/* Mode indicator */
+.vim-mode-indicator {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.5rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    z-index: 1000;
+    transition: opacity 0.2s;
+    box-shadow: 0 4px 12px var(--shadow);
+}
+
+.vim-mode-indicator.vim-visual-mode {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    font-weight: bold;
+}
+
+.vim-mode-indicator.vim-notification {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
+}
+
+.vim-mode-indicator.vim-error {
+    background: #ef4444;
+    border-color: #ef4444;
+}
+
+/* Help modal */
+.help-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.help-modal-content {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 2rem;
+    max-width: 700px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.help-modal-content h3 {
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    font-size: 1.4rem;
+    text-align: center;
+}
+
+.help-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+
+.help-section {
+    background: var(--bg-primary);
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.help-section h4 {
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+    font-size: 0.95rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.5rem;
+}
+
+.help-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.help-row kbd {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    min-width: 1.5rem;
+    text-align: center;
+    box-shadow: 0 1px 2px var(--shadow);
+}
+
+.help-footer {
+    margin-top: 1.5rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.help-footer kbd {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+    font-family: monospace;
+    font-size: 0.75rem;
 }
 
 /* Main content */
@@ -232,7 +436,7 @@ main {
     text-align: center;
     border: 1px solid var(--border);
     min-width: 140px;
-    transition: all 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
 .stat:hover {
@@ -275,7 +479,7 @@ main {
     color: var(--text-secondary);
     cursor: pointer;
     font-size: 0.875rem;
-    transition: all 0.2s;
+    transition: transform 0.2s;
     text-decoration: none;
 }
 
@@ -317,7 +521,7 @@ h3 {
     border-radius: 12px;
     text-decoration: none;
     color: inherit;
-    transition: all 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     border: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -405,7 +609,7 @@ h3 {
     text-decoration: none;
     color: inherit;
     border: 1px solid var(--border);
-    transition: all 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
 .conversation-card:hover {
@@ -512,7 +716,6 @@ h3 {
     border-radius: 12px;
     border: 1px solid var(--border);
     overflow: hidden;
-    transition: all 0.2s;
 }
 
 .message.user-message {
@@ -561,8 +764,6 @@ h3 {
     word-break: break-word;
     font-size: 0.95rem;
     line-height: 1.7;
-    max-height: 400px;
-    overflow-y: auto;
 }
 
 .message-content.collapsed {
@@ -594,6 +795,174 @@ h3 {
 
 .message-toggle:hover {
     background: var(--bg-primary);
+}
+
+/* Content blocks (new interleaved format) */
+.message-content-blocks {
+    padding: 1rem;
+}
+
+.content-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    margin-bottom: 0.75rem;
+}
+
+.content-text:last-child {
+    margin-bottom: 0;
+}
+
+.content-thinking {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--bg-hover);
+    border-radius: 8px;
+    border-left: 3px solid var(--warning);
+    color: var(--text-secondary);
+    font-style: italic;
+    overflow: hidden;
+}
+
+.content-thinking.collapsed {
+    max-height: 4em;
+    position: relative;
+}
+
+.content-thinking.collapsed::after {
+    content: '... (h para expandir)';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(to right, transparent, var(--bg-hover) 30%);
+    padding-left: 2em;
+    padding-right: 0.5em;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+/* Inline tool blocks (within message flow) */
+.tool-block-inline {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin: 0.75rem 0;
+    overflow: hidden;
+}
+
+.tool-block-inline:last-child {
+    margin-bottom: 0;
+}
+
+.tool-header-inline {
+    padding: 0.4rem 0.75rem;
+    background: var(--bg-hover);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+}
+
+.tool-input-inline {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 150px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+}
+
+.tool-result-inline {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    background: var(--code-bg);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Tool blocks */
+.tool-blocks {
+    padding: 0.75rem 1rem;
+    background: var(--bg-hover);
+    border-top: 1px solid var(--border);
+}
+
+.tool-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+
+.tool-block:last-child {
+    margin-bottom: 0;
+}
+
+.tool-block.collapsed .tool-input,
+.tool-block.collapsed .tool-result,
+.tool-block-inline.collapsed .tool-input-inline,
+.tool-block-inline.collapsed .tool-result-inline {
+    display: none;
+}
+
+.tool-block.collapsed .tool-header::after,
+.tool-block-inline.collapsed .tool-header-inline::after {
+    content: ' (colapsado - l para expandir)';
+    font-weight: normal;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+}
+
+.tool-header {
+    padding: 0.4rem 0.75rem;
+    background: var(--code-bg);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+}
+
+.tool-input {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 150px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--border);
+}
+
+.tool-result {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+    font-family: 'Monaco', 'Consolas', 'Courier New', monospace;
+    background: var(--code-bg);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
 /* Search results */
@@ -740,6 +1109,42 @@ footer {
 .conversation-card,
 .message {
     animation: fadeIn 0.3s ease-out;
+}
+
+/* Floating navigation buttons */
+.floating-nav {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    z-index: 1000;
+}
+
+.floating-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px var(--shadow-hover);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.floating-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px var(--shadow-hover);
+}
+
+.floating-btn svg {
+    width: 20px;
+    height: 20px;
 }
 
 /* Print styles */

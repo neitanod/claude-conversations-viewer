@@ -23,21 +23,34 @@ var templatesFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
-// Message represents a single message in a conversation (user or assistant)
-type Message struct {
-	UUID      string    `json:"uuid"`
-	Type      string    `json:"type"` // "user" or "assistant"
-	Timestamp time.Time `json:"timestamp"`
-	Content   string    `json:"content"`
-	Role      string    `json:"role"`
-	Model     string    `json:"model,omitempty"`
-	ToolUses  []ToolUse `json:"toolUses,omitempty"`
+// ContentBlock represents either text or a tool invocation (in order)
+type ContentBlock struct {
+	Type     string `json:"type"` // "text", "thinking", or "tool"
+	Text     string `json:"text,omitempty"`
+	ToolID   string `json:"toolId,omitempty"`
+	ToolName string `json:"toolName,omitempty"`
+	Input    string `json:"input,omitempty"`
+	Result   string `json:"result,omitempty"`
 }
 
-// ToolUse represents a tool usage in a message
-type ToolUse struct {
-	Name  string `json:"name"`
-	Input string `json:"input"`
+// Message represents a single message in a conversation (user or assistant)
+type Message struct {
+	UUID          string         `json:"uuid"`
+	Type          string         `json:"type"` // "user" or "assistant"
+	Timestamp     time.Time      `json:"timestamp"`
+	Content       string         `json:"content"`       // Legacy: all text concatenated
+	Role          string         `json:"role"`
+	Model         string         `json:"model,omitempty"`
+	ToolBlocks    []ToolBlock    `json:"toolBlocks,omitempty"`    // Legacy
+	ContentBlocks []ContentBlock `json:"contentBlocks,omitempty"` // New: ordered blocks
+}
+
+// ToolBlock represents a tool invocation with its result (legacy, kept for compatibility)
+type ToolBlock struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Input  string `json:"input"`
+	Result string `json:"result"`
 }
 
 // Conversation represents a full conversation with all messages
@@ -191,6 +204,11 @@ func (a *App) loadAllConversations() error {
 				continue
 			}
 
+			// Skip warmup agent conversations (internal Claude Code sidechain processes)
+			if strings.HasPrefix(cf.Name(), "agent-") {
+				continue
+			}
+
 			sessionID := strings.TrimSuffix(cf.Name(), ".jsonl")
 			filePath := filepath.Join(convDir, cf.Name())
 
@@ -303,12 +321,31 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 
 	titlesMap := make(map[string]bool) // Avoid duplicates
 
+	// Map to collect tool_use IDs to their results
+	toolResults := make(map[string]string) // tool_use_id -> result content
+
+	// First pass: collect all tool results
+	var entries []RawEntry
 	for scanner.Scan() {
 		var entry RawEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
+		entries = append(entries, entry)
 
+		// Collect tool results
+		if entry.Type == "user" && entry.Message != nil {
+			var msgContent RawMessageContent
+			if err := json.Unmarshal(entry.Message, &msgContent); err == nil {
+				collectToolResults(msgContent.Content, toolResults)
+			}
+		}
+	}
+
+	// Second pass: build messages with tool blocks
+	var lastAssistantMsg *Message // Track last assistant message for merging
+
+	for _, entry := range entries {
 		// Collect summaries as titles
 		if entry.Type == "summary" && entry.Summary != "" {
 			if !titlesMap[entry.Summary] {
@@ -322,43 +359,96 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 			continue
 		}
 
-		ts, _ := time.Parse(time.RFC3339, entry.Timestamp)
-
-		msg := Message{
-			UUID:      entry.UUID,
-			Type:      entry.Type,
-			Timestamp: ts,
-		}
-
-		// Parse message content
-		if entry.Message != nil {
+		// Skip tool_result entries (they are merged into assistant messages)
+		if entry.Type == "user" && entry.Message != nil {
 			var msgContent RawMessageContent
 			if err := json.Unmarshal(entry.Message, &msgContent); err == nil {
-				msg.Role = msgContent.Role
-				msg.Model = msgContent.Model
-
-				// Extract text content
-				msg.Content = extractTextContent(msgContent.Content)
+				if isToolResultContent(msgContent.Content) {
+					continue
+				}
 			}
 		}
 
-		// Skip empty messages
-		if strings.TrimSpace(msg.Content) == "" {
+		ts, _ := time.Parse(time.RFC3339, entry.Timestamp)
+
+		// Parse message content
+		var content string
+		var toolBlocks []ToolBlock
+		var contentBlocks []ContentBlock
+		var role, model string
+
+		if entry.Message != nil {
+			var msgContent RawMessageContent
+			if err := json.Unmarshal(entry.Message, &msgContent); err == nil {
+				role = msgContent.Role
+				model = msgContent.Model
+				content, toolBlocks, contentBlocks = extractContentAndTools(msgContent.Content, toolResults)
+			}
+		}
+
+		// Skip empty messages (no text and no tools)
+		if strings.TrimSpace(content) == "" && len(toolBlocks) == 0 {
 			continue
 		}
 
-		conv.Messages = append(conv.Messages, msg)
+		// For assistant messages, try to merge consecutive ones
+		if entry.Type == "assistant" {
+			if lastAssistantMsg != nil {
+				// Merge into the last assistant message
+				if content != "" {
+					if lastAssistantMsg.Content != "" {
+						lastAssistantMsg.Content += "\n\n" + content
+					} else {
+						lastAssistantMsg.Content = content
+					}
+				}
+				lastAssistantMsg.ToolBlocks = append(lastAssistantMsg.ToolBlocks, toolBlocks...)
+				lastAssistantMsg.ContentBlocks = append(lastAssistantMsg.ContentBlocks, contentBlocks...)
+				lastAssistantMsg.Timestamp = ts // Update to latest timestamp
+				continue
+			}
 
-		if entry.Type == "user" {
-			conv.UserCount++
-		} else {
+			// Start a new assistant message
+			msg := Message{
+				UUID:          entry.UUID,
+				Type:          entry.Type,
+				Timestamp:     ts,
+				Content:       content,
+				Role:          role,
+				Model:         model,
+				ToolBlocks:    toolBlocks,
+				ContentBlocks: contentBlocks,
+			}
+			conv.Messages = append(conv.Messages, msg)
+			lastAssistantMsg = &conv.Messages[len(conv.Messages)-1]
 			conv.AssistantCount++
+		} else {
+			// User message - reset the assistant merge tracking
+			lastAssistantMsg = nil
+
+			msg := Message{
+				UUID:          entry.UUID,
+				Type:          entry.Type,
+				Timestamp:     ts,
+				Content:       content,
+				Role:          role,
+				Model:         model,
+				ToolBlocks:    toolBlocks,
+				ContentBlocks: contentBlocks,
+			}
+			conv.Messages = append(conv.Messages, msg)
+			conv.UserCount++
 		}
 
 		// Track timestamps
 		if conv.FirstTime.IsZero() || ts.Before(conv.FirstTime) {
 			conv.FirstTime = ts
-			conv.FirstMessage = truncateString(msg.Content, 100)
+			lastMsg := &conv.Messages[len(conv.Messages)-1]
+			if lastMsg.Content != "" {
+				conv.FirstMessage = truncateString(lastMsg.Content, 100)
+			} else if len(lastMsg.ToolBlocks) > 0 {
+				conv.FirstMessage = fmt.Sprintf("[%s]", lastMsg.ToolBlocks[0].Name)
+			}
 		}
 		if ts.After(conv.LastTime) {
 			conv.LastTime = ts
@@ -369,28 +459,133 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 	return conv, nil
 }
 
-func extractTextContent(raw json.RawMessage) string {
+// collectToolResults extracts tool_result content and maps them by tool_use_id
+func collectToolResults(raw json.RawMessage, results map[string]string) {
+	var blocks []map[string]interface{}
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return
+	}
+	for _, block := range blocks {
+		if block["type"] == "tool_result" {
+			toolUseID, _ := block["tool_use_id"].(string)
+			content, _ := block["content"].(string)
+			if toolUseID != "" {
+				results[toolUseID] = content
+			}
+		}
+	}
+}
+
+// extractContentAndTools separates text content from tool_use blocks
+// Returns: concatenated text (legacy), tool blocks (legacy), and ordered content blocks (new)
+func extractContentAndTools(raw json.RawMessage, toolResults map[string]string) (string, []ToolBlock, []ContentBlock) {
 	// Try as string first
 	var strContent string
 	if err := json.Unmarshal(raw, &strContent); err == nil {
-		return strContent
+		if strContent != "" {
+			return strContent, nil, []ContentBlock{{Type: "text", Text: strContent}}
+		}
+		return strContent, nil, nil
 	}
 
 	// Try as array of content blocks
 	var blocks []map[string]interface{}
-	if err := json.Unmarshal(raw, &blocks); err == nil {
-		var texts []string
-		for _, block := range blocks {
-			if block["type"] == "text" {
-				if text, ok := block["text"].(string); ok {
-					texts = append(texts, text)
-				}
-			}
-		}
-		return strings.Join(texts, "\n")
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return "", nil, nil
 	}
 
+	var textParts []string
+	var toolBlocks []ToolBlock
+	var contentBlocks []ContentBlock
+
+	for _, block := range blocks {
+		blockType, _ := block["type"].(string)
+		switch blockType {
+		case "text":
+			if text, ok := block["text"].(string); ok && text != "" {
+				textParts = append(textParts, text)
+				contentBlocks = append(contentBlocks, ContentBlock{Type: "text", Text: text})
+			}
+		case "thinking":
+			if thinking, ok := block["thinking"].(string); ok && thinking != "" {
+				textParts = append(textParts, fmt.Sprintf("💭  %s", thinking))
+				contentBlocks = append(contentBlocks, ContentBlock{Type: "thinking", Text: thinking})
+			}
+		case "tool_use":
+			id, _ := block["id"].(string)
+			name, _ := block["name"].(string)
+			if name != "" {
+				inputStr := formatToolInput(block["input"])
+				result := toolResults[id]
+				toolBlocks = append(toolBlocks, ToolBlock{
+					ID:     id,
+					Name:   name,
+					Input:  inputStr,
+					Result: result,
+				})
+				contentBlocks = append(contentBlocks, ContentBlock{
+					Type:     "tool",
+					ToolID:   id,
+					ToolName: name,
+					Input:    inputStr,
+					Result:   result,
+				})
+			}
+		}
+	}
+
+	return strings.Join(textParts, "\n\n"), toolBlocks, contentBlocks
+}
+
+// formatToolInput formats the input of a tool_use for display
+func formatToolInput(input interface{}) string {
+	inputMap, ok := input.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+
+	// For Bash, show the command
+	if cmd, ok := inputMap["command"].(string); ok {
+		return cmd
+	}
+	// For Read/Write/Edit, show file path
+	if filePath, ok := inputMap["file_path"].(string); ok {
+		if oldStr, ok := inputMap["old_string"].(string); ok {
+			// Edit tool
+			return fmt.Sprintf("%s\nold: %s", filePath, truncateString(oldStr, 50))
+		}
+		return filePath
+	}
+	// For Grep/Glob, show pattern
+	if pattern, ok := inputMap["pattern"].(string); ok {
+		return pattern
+	}
+	// For WebSearch/WebFetch
+	if query, ok := inputMap["query"].(string); ok {
+		return query
+	}
+	if url, ok := inputMap["url"].(string); ok {
+		return url
+	}
+
+	// Fallback: JSON
+	if data, err := json.Marshal(inputMap); err == nil {
+		return truncateString(string(data), 200)
+	}
 	return ""
+}
+
+// isToolResultContent checks if the content is a tool_result array
+func isToolResultContent(raw json.RawMessage) bool {
+	var blocks []map[string]interface{}
+	if err := json.Unmarshal(raw, &blocks); err == nil {
+		for _, block := range blocks {
+			if block["type"] == "tool_result" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func truncateString(s string, maxLen int) string {
@@ -692,8 +887,13 @@ func (a *App) handleConversation(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := strings.ToLower(r.URL.Query().Get("q"))
+	projectFilter := r.URL.Query().Get("project")
 	if query == "" {
-		http.Redirect(w, r, "/", http.StatusFound)
+		if projectFilter != "" {
+			http.Redirect(w, r, "/project?path="+projectFilter, http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/", http.StatusFound)
+		}
 		return
 	}
 
@@ -706,6 +906,10 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	var results []SearchResult
 
 	for _, conv := range a.conversations {
+		// Filter by project if specified
+		if projectFilter != "" && conv.Project != projectFilter {
+			continue
+		}
 		// Load full conversation for search
 		fullConv, err := a.loadFullConversation(conv.SessionID)
 		if err != nil {
@@ -773,14 +977,26 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get project name for display
+	var projectName string
+	if projectFilter != "" {
+		if proj, ok := a.projects[projectFilter]; ok {
+			projectName = proj.Name
+		}
+	}
+
 	data := struct {
-		Query   string
-		Results []SearchResult
-		Count   int
+		Query       string
+		Results     []SearchResult
+		Count       int
+		Project     string
+		ProjectName string
 	}{
-		Query:   r.URL.Query().Get("q"),
-		Results: results,
-		Count:   len(results),
+		Query:       r.URL.Query().Get("q"),
+		Results:     results,
+		Count:       len(results),
+		Project:     projectFilter,
+		ProjectName: projectName,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
