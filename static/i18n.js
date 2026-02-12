@@ -82,6 +82,7 @@ const i18n = {
         'Focus search': 'Enfocar busqueda',
         'Next match': 'Siguiente coincidencia',
         'Previous match': 'Coincidencia anterior',
+        'Clear': 'Limpiar',
         'Other': 'Otros',
         'Show/hide help': 'Mostrar/ocultar ayuda',
         'Press [:keys:] to close': 'Presiona [:keys:] para cerrar',
@@ -98,7 +99,7 @@ const i18n = {
         'Enter': 'Entrar',
         'Invalid username or password': 'Usuario o contrasena incorrectos',
 
-        // Visual mode
+        // Visual mode indicator
         '-- VISUAL -- ([:n:] selected)': '-- VISUAL -- ([:n:] seleccionado(s))',
 
         // Session
