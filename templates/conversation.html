@@ -176,6 +176,8 @@
                     <h4 data-i18n="Expand/Collapse">Expand/Collapse</h4>
                     <div class="help-row"><kbd>l</kbd> <span data-i18n="Expand message sections">Expand message sections</span></div>
                     <div class="help-row"><kbd>h</kbd> <span data-i18n="Collapse message sections">Collapse message sections</span></div>
+                    <div class="help-row"><kbd>E</kbd> <span data-i18n="Expand all">Expand all</span></div>
+                    <div class="help-row"><kbd>C</kbd> <span data-i18n="Collapse all">Collapse all</span></div>
                     <div class="help-row"><kbd>Enter</kbd> <span data-i18n="Toggle message expansion">Toggle message expansion</span></div>
                 </div>
                 <div class="help-section">
@@ -254,20 +256,22 @@
             window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
         }
 
-        // Scroll persistence for refresh
+        // Scroll and focus persistence for refresh
         function saveScrollAndRefresh(e) {
             e.preventDefault();
             sessionStorage.setItem('scrollPos', window.scrollY);
+            sessionStorage.setItem('vimFocusedIndex', vim.focusedIndex);
             window.location.href = '/refresh';
         }
 
-        (function() {
+        // Restore scroll position (called after vim init)
+        function restoreScrollPosition() {
             const scrollPos = sessionStorage.getItem('scrollPos');
             if (scrollPos) {
                 sessionStorage.removeItem('scrollPos');
                 window.scrollTo(0, parseInt(scrollPos));
             }
-        })();
+        }
 
         // Local search functionality
         let searchMatches = [];
@@ -481,11 +485,25 @@
         function initVim() {
             vim.messages = Array.from(document.querySelectorAll('.message'));
             if (vim.messages.length > 0) {
+                // Check if we have a saved focus index from refresh
+                const savedFocusIndex = sessionStorage.getItem('vimFocusedIndex');
+                if (savedFocusIndex !== null) {
+                    sessionStorage.removeItem('vimFocusedIndex');
+                    const index = parseInt(savedFocusIndex);
+                    if (index >= 0 && index < vim.messages.length) {
+                        // Set focus without scrolling
+                        setFocusNoScroll(index);
+                        // Restore scroll position after focus is set
+                        restoreScrollPosition();
+                        return;
+                    }
+                }
+                // Default: focus first message
                 setFocus(0);
             }
         }
 
-        function setFocus(index) {
+        function setFocusNoScroll(index) {
             if (index < 0 || index >= vim.messages.length) return;
 
             // Remove focus from previous
@@ -497,12 +515,35 @@
             const msg = vim.messages[index];
             msg.classList.add('vim-focused');
 
+            // Update selection if in selection mode
+            if (vim.selectionMode) {
+                updateSelectionRange();
+            }
+
+            updateModeIndicator();
+        }
+
+        function setFocus(index, opts) {
+            if (index < 0 || index >= vim.messages.length) return;
+            const shouldScroll = !opts || opts.scroll !== false;
+
+            // Remove focus from previous
+            if (vim.focusedIndex >= 0 && vim.messages[vim.focusedIndex]) {
+                vim.messages[vim.focusedIndex].classList.remove('vim-focused');
+            }
+
+            vim.focusedIndex = index;
+            const msg = vim.messages[index];
+            msg.classList.add('vim-focused');
+
             // Scroll so item is near top of viewport (below header + 20px margin)
-            const header = document.querySelector('header');
-            const headerHeight = header ? header.offsetHeight : 60;
-            const rect = msg.getBoundingClientRect();
-            const targetY = window.scrollY + rect.top - headerHeight - 20;
-            window.scrollTo({ top: targetY, behavior: 'smooth' });
+            if (shouldScroll) {
+                const header = document.querySelector('header');
+                const headerHeight = header ? header.offsetHeight : 60;
+                const rect = msg.getBoundingClientRect();
+                const targetY = window.scrollY + rect.top - headerHeight - 20;
+                window.scrollTo({ top: targetY, behavior: 'smooth' });
+            }
 
             // Update selection if in selection mode
             if (vim.selectionMode) {
@@ -739,6 +780,46 @@
             });
         }
 
+        function expandAll() {
+            vim.messages.forEach((msg, i) => {
+                const content = msg.querySelector('.message-content');
+                if (content && content.classList.contains('collapsed')) {
+                    content.classList.remove('collapsed');
+                    const toggle = document.getElementById('toggle-' + i);
+                    if (toggle) toggle.textContent = t('Show less');
+                }
+
+                msg.querySelectorAll('.tool-block, .tool-block-inline').forEach(block => {
+                    block.classList.remove('collapsed');
+                });
+
+                msg.querySelectorAll('.content-thinking').forEach(block => {
+                    block.classList.remove('collapsed');
+                });
+            });
+            showNotification(t('Expanded all'));
+        }
+
+        function collapseAll() {
+            vim.messages.forEach((msg, i) => {
+                const content = msg.querySelector('.message-content');
+                if (content && !content.classList.contains('collapsed')) {
+                    content.classList.add('collapsed');
+                    const toggle = document.getElementById('toggle-' + i);
+                    if (toggle) toggle.textContent = t('Show more');
+                }
+
+                msg.querySelectorAll('.tool-block, .tool-block-inline').forEach(block => {
+                    block.classList.add('collapsed');
+                });
+
+                msg.querySelectorAll('.content-thinking').forEach(block => {
+                    block.classList.add('collapsed');
+                });
+            });
+            showNotification(t('Collapsed all'));
+        }
+
         // Main keyboard handler
         document.addEventListener('keydown', function(e) {
             // Ignore if typing in input
@@ -814,6 +895,14 @@
                 // Expand all sections in current message
                 e.preventDefault();
                 expandCurrentMessage();
+            } else if (key === 'E') {
+                // Expand all messages
+                e.preventDefault();
+                expandAll();
+            } else if (key === 'C') {
+                // Collapse all messages
+                e.preventDefault();
+                collapseAll();
             } else if (key === 'G') {
                 e.preventDefault();
                 goToLast();
@@ -865,13 +954,13 @@
             }
         });
 
-        // Click on message to focus
+        // Click on message to focus (never scroll on click)
         document.addEventListener('click', function(e) {
             const msg = e.target.closest('.message');
             if (msg) {
                 const index = vim.messages.indexOf(msg);
                 if (index >= 0) {
-                    setFocus(index);
+                    setFocus(index, { scroll: false });
                 }
             }
         });
