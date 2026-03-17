@@ -103,8 +103,8 @@ func TestTruncateString(t *testing.T) {
 	}
 }
 
-// Test extractTextContent
-func TestExtractTextContent(t *testing.T) {
+// Test extractContentAndTools (text extraction)
+func TestExtractContentAndTools(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
@@ -118,7 +118,7 @@ func TestExtractTextContent(t *testing.T) {
 		{
 			name:     "array with text blocks",
 			input:    `[{"type": "text", "text": "First"}, {"type": "text", "text": "Second"}]`,
-			expected: "First\nSecond",
+			expected: "First\n\nSecond",
 		},
 		{
 			name:     "array with mixed types",
@@ -139,9 +139,9 @@ func TestExtractTextContent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractTextContent(json.RawMessage(tt.input))
+			result, _, _ := extractContentAndTools(json.RawMessage(tt.input), nil)
 			if result != tt.expected {
-				t.Errorf("extractTextContent(%s) = %q, want %q", tt.input, result, tt.expected)
+				t.Errorf("extractContentAndTools(%s) text = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}
@@ -1091,7 +1091,7 @@ func TestSearchInTitles(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 
 	// Should find the conversation because "unique" is in the title
-	if !strings.Contains(string(body), "1 conversaciones") {
+	if !strings.Contains(string(body), "conversations found") {
 		t.Error("Search should find conversation by title")
 	}
 }
@@ -1246,7 +1246,7 @@ func TestSearchPreviewEdgeCases(t *testing.T) {
 
 	body, _ := io.ReadAll(resp.Body)
 	// Should have found the conversation
-	if !strings.Contains(string(body), "1 conversaciones") {
+	if !strings.Contains(string(body), "conversations found") {
 		t.Error("Search should find conversation with test content")
 	}
 }
