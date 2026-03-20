@@ -6,17 +6,27 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	maxPortRetries   = 50
+	shutdownGrace    = 5 * time.Second
 )
 
 //go:embed templates/*
@@ -233,6 +243,7 @@ type App struct {
 	mu            sync.RWMutex
 	config        *Config
 	sessions      *SessionStore
+	clients       *ClientTracker
 }
 
 // RawMessage types for parsing JSONL
@@ -1285,10 +1296,120 @@ func (a *App) requireAuth(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// ClientTracker tracks connected SSE clients and handles auto-shutdown
+type ClientTracker struct {
+	mu            sync.Mutex
+	count         int
+	shutdownTimer *time.Timer
+	serve         bool // if true, never auto-shutdown
+}
+
+func NewClientTracker(serve bool) *ClientTracker {
+	return &ClientTracker{serve: serve}
+}
+
+func (ct *ClientTracker) Add() {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	ct.count++
+	if ct.shutdownTimer != nil {
+		ct.shutdownTimer.Stop()
+		ct.shutdownTimer = nil
+	}
+	log.Printf("Client connected (%d active)", ct.count)
+}
+
+func (ct *ClientTracker) Remove() {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	ct.count--
+	if ct.count < 0 {
+		ct.count = 0
+	}
+	log.Printf("Client disconnected (%d active)", ct.count)
+	if ct.count == 0 && !ct.serve {
+		ct.shutdownTimer = time.AfterFunc(shutdownGrace, func() {
+			ct.mu.Lock()
+			c := ct.count
+			ct.mu.Unlock()
+			if c == 0 {
+				log.Println("No clients connected, shutting down")
+				os.Exit(0)
+			}
+		})
+	}
+}
+
+func (ct *ClientTracker) Count() int {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	return ct.count
+}
+
+func (a *App) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	a.clients.Add()
+	defer a.clients.Remove()
+
+	// Send initial client count
+	fmt.Fprintf(w, "data: {\"clients\": %d}\n\n", a.clients.Count())
+	flusher.Flush()
+
+	// Keep-alive: send count every 15s
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			fmt.Fprintf(w, "data: {\"clients\": %d}\n\n", a.clients.Count())
+			flusher.Flush()
+		}
+	}
+}
+
+func openBrowser(url string) {
+	var err error
+	switch runtime.GOOS {
+	case "linux":
+		err = exec.Command("xdg-open", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	default:
+		err = fmt.Errorf("unsupported platform")
+	}
+	if err != nil {
+		log.Printf("Could not open browser: %v", err)
+		log.Printf("Please open %s manually", url)
+	}
+}
+
 func main() {
-	port := "8042"
-	if len(os.Args) > 1 {
-		port = os.Args[1]
+	serve := flag.Bool("serve", false, "Run in server mode (don't open browser, don't auto-shutdown)")
+	portFlag := flag.Int("port", 0, "Override default port")
+	flag.Parse()
+
+	// Determine port: flag > first positional arg > default 8042
+	defaultPort := 8042
+	if *portFlag != 0 {
+		defaultPort = *portFlag
+	} else if flag.NArg() > 0 {
+		if p, err := strconv.Atoi(flag.Arg(0)); err == nil {
+			defaultPort = p
+		}
 	}
 
 	log.Println("Loading conversations...")
@@ -1299,11 +1420,41 @@ func main() {
 		log.Fatalf("Failed to initialize app: %v", err)
 	}
 
+	app.clients = NewClientTracker(*serve)
+
 	log.Printf("Loaded %d conversations from %d projects in %v", len(app.conversations), len(app.projects), time.Since(start))
+
+	// Find available port
+	portSpecified := *portFlag != 0
+	var listener net.Listener
+
+	for i := 0; i < maxPortRetries; i++ {
+		tryPort := defaultPort + i
+		addr := fmt.Sprintf(":%d", tryPort)
+		listener, err = net.Listen("tcp", addr)
+		if err == nil {
+			if i > 0 {
+				log.Printf("Port %d busy, using %d", defaultPort, tryPort)
+			}
+			defaultPort = tryPort
+			break
+		}
+		if portSpecified {
+			log.Fatalf("Port %d is already in use", defaultPort)
+		}
+	}
+
+	if listener == nil {
+		log.Fatalf("Could not find available port after trying %d ports (from %d to %d)",
+			maxPortRetries, defaultPort, defaultPort+maxPortRetries-1)
+	}
 
 	// Static files
 	staticContent, _ := fs.Sub(staticFS, "static")
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticContent))))
+
+	// SSE endpoint (no auth required for connection tracking)
+	http.HandleFunc("/events", app.handleEvents)
 
 	// Auth routes (no authentication required)
 	http.HandleFunc("/login", app.handleLogin)
@@ -1324,9 +1475,16 @@ func main() {
 		log.Printf("Authentication disabled (no credentials in config)")
 	}
 
-	addr := ":" + port
-	log.Printf("Starting Claude Conversations Viewer on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, nil); err != nil {
+	url := fmt.Sprintf("http://localhost:%d", defaultPort)
+	log.Printf("Starting on %s", url)
+
+	if !*serve {
+		log.Println("Opening browser...")
+		openBrowser(url)
+		log.Println("Will auto-shutdown after all browser tabs are closed")
+	}
+
+	if err := http.Serve(listener, nil); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
