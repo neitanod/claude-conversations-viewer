@@ -440,12 +440,23 @@ func (a *App) loadAllConversations() error {
 }
 
 func projectDirToPath(dirName string) string {
-	// Convert "-home-sebas-robotin" to "/home/sebas/robotin"
+	// Windows: "C--Users-Juan-Patricio" -> "C:\Users\Juan-Patricio"
+	// (la codificación original es lossy: espacios y guiones quedan ambiguos)
+	if runtime.GOOS == "windows" && len(dirName) >= 3 && dirName[1] == '-' && dirName[2] == '-' && isASCIILetter(dirName[0]) {
+		drive := string(dirName[0]) + ":"
+		rest := strings.ReplaceAll(dirName[3:], "-", `\`)
+		return drive + `\` + rest
+	}
+	// Linux/macOS: "-home-sebas-robotin" -> "/home/sebas/robotin"
 	path := strings.ReplaceAll(dirName, "-", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 	return path
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir string) (*Conversation, error) {
