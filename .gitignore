@@ -1,5 +1,10 @@
-# Binary
-claude-conversations-viewer
+# Binarios compilados
+/claude-conversations-viewer
+/conversations-viewer
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Test coverage
 coverage.out
