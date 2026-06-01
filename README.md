@@ -8,23 +8,41 @@ Claude Code stores conversations in `~/.claude/projects/` fragmented by project.
 
 ## Installation
 
-```bash
-# The binary is at:
-~/robotin/apps/claude-conversations-viewer/claude-conversations-viewer
+### Linux / macOS
 
-# Or run directly:
-cd ~/robotin/apps/claude-conversations-viewer
+```bash
+git clone https://github.com/neitanod/claude-conversations-viewer.git
+cd claude-conversations-viewer
+./build
 ./run
 ```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/neitanod/claude-conversations-viewer.git
+cd claude-conversations-viewer
+.\build.ps1
+.\run.ps1
+```
+
+### Asisted by an AI agent
+
+If you use an agent with terminal access (Claude Code, Cursor, etc.), you can
+install by pasting this prompt:
+
+<https://github.com/neitanod/claude-conversations-viewer/blob/main/install_prompt.md>
 
 ## Usage
 
 ```bash
 # Start on default port (8042)
-./claude-conversations-viewer
+./conversations-viewer           # Linux/macOS
+.\conversations-viewer.exe       # Windows
 
 # Start on custom port
-./claude-conversations-viewer 9000
+./conversations-viewer 9000      # Linux/macOS
+.\conversations-viewer.exe 9000  # Windows
 ```
 
 Then open http://localhost:8042 in your browser.
@@ -136,23 +154,41 @@ Claude Code almacena las conversaciones en `~/.claude/projects/` de forma fragme
 
 ## Instalación
 
-```bash
-# El binario está en:
-~/robotin/apps/claude-conversations-viewer/claude-conversations-viewer
+### Linux / macOS
 
-# O ejecutar directamente:
-cd ~/robotin/apps/claude-conversations-viewer
+```bash
+git clone https://github.com/neitanod/claude-conversations-viewer.git
+cd claude-conversations-viewer
+./build
 ./run
 ```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/neitanod/claude-conversations-viewer.git
+cd claude-conversations-viewer
+.\build.ps1
+.\run.ps1
+```
+
+### Asistida por un agente de IA
+
+Si usás un agente con acceso a tu terminal (Claude Code, Cursor, etc.), podés
+instalar pegándole este prompt:
+
+<https://github.com/neitanod/claude-conversations-viewer/blob/main/install_prompt.md>
 
 ## Uso
 
 ```bash
 # Iniciar en puerto por defecto (8042)
-./claude-conversations-viewer
+./conversations-viewer           # Linux/macOS
+.\conversations-viewer.exe       # Windows
 
 # Iniciar en puerto personalizado
-./claude-conversations-viewer 9000
+./conversations-viewer 9000      # Linux/macOS
+.\conversations-viewer.exe 9000  # Windows
 ```
 
 Luego abrir http://localhost:8042 en el navegador.
