@@ -443,11 +443,13 @@ func (a *App) loadAllConversations() error {
 
 func projectDirToPath(dirName string) string {
 	// Windows: "C--Users-Juan-Patricio" -> "C:\Users\Juan-Patricio"
-	// (la codificación original es lossy: espacios y guiones quedan ambiguos)
+	// El nombre de carpeta usa "-" como separador, pero los nombres reales
+	// también pueden contener "-": desambiguamos contra el disco igual que en
+	// Linux/macOS, arrancando desde la raíz de la unidad (p. ej. "C:\").
 	if runtime.GOOS == "windows" && len(dirName) >= 3 && dirName[1] == '-' && dirName[2] == '-' && isASCIILetter(dirName[0]) {
-		drive := string(dirName[0]) + ":"
-		rest := strings.ReplaceAll(dirName[3:], "-", `\`)
-		return drive + `\` + rest
+		drive := string(dirName[0]) + `:\`
+		parts := strings.Split(dirName[3:], "-")
+		return resolveProjectPath(parts, 0, drive)
 	}
 	// Linux/macOS: the directory name uses "-" as separator, but real paths
 	// may also contain "-". Resolve the ambiguity by checking which path
