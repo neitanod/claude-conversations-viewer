@@ -184,9 +184,15 @@
     </script>
     <script>
         (function() {
-            var es = new EventSource('/events');
-            es.onerror = function() { es.close(); setTimeout(function() { es = new EventSource('/events'); }, 2000); };
-            window.addEventListener('beforeunload', function() { es.close(); });
+            var es;
+            function connectEvents() {
+                if (es) { try { es.close(); } catch(e) {} }
+                es = new EventSource('/events');
+                es.onerror = function() { es.close(); setTimeout(connectEvents, 2000); };
+            }
+            connectEvents();
+            window.addEventListener('beforeunload', function() { if (es) es.close(); });
+            window.addEventListener('pageshow', function(e) { if (e.persisted) connectEvents(); });
         })();
     </script>
 </body>

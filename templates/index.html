@@ -18,7 +18,7 @@
     <header>
         <h1><a href="/">Claude Conversations</a></h1>
         <div class="header-controls">
-            <form action="/search" method="GET" class="search-form">
+            <form action="/search" method="GET" class="search-form" id="searchForm">
                 <input type="text" name="q" data-i18n-placeholder="Search all conversations..." autocomplete="off">
                 <button type="submit" data-i18n="Search">Search</button>
             </form>
@@ -55,46 +55,61 @@
     </header>
 
     <main>
-        <div class="stats">
-            <div class="stat">
-                <span class="stat-value">{{.TotalProjects}}</span>
-                <span class="stat-label" data-i18n="Projects">Projects</span>
-            </div>
-            <div class="stat">
-                <span class="stat-value">{{.TotalConversations}}</span>
-                <span class="stat-label" data-i18n="Conversations">Conversations</span>
-            </div>
-        </div>
-
-        <div class="sort-controls">
-            <label data-i18n="Sort by:">Sort by:</label>
-            <a href="?sort=last&dir={{if and (eq .SortOrder "last") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "last"}}active{{end}}">
-                <span data-i18n="Last activity">Last activity</span> {{if eq .SortOrder "last"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
-            </a>
-            <a href="?sort=first&dir={{if and (eq .SortOrder "first") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "first"}}active{{end}}">
-                <span data-i18n="First activity">First activity</span> {{if eq .SortOrder "first"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
-            </a>
-            <a href="?sort=name&dir={{if and (eq .SortOrder "name") (eq .SortDir "asc")}}desc{{else}}asc{{end}}" class="sort-btn {{if eq .SortOrder "name"}}active{{end}}">
-                <span data-i18n="Name">Name</span> {{if eq .SortOrder "name"}}{{if eq .SortDir "asc"}}▲{{else}}▼{{end}}{{end}}
-            </a>
-            <a href="?sort=messages&dir={{if and (eq .SortOrder "messages") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "messages"}}active{{end}}">
-                <span data-i18n="Most messages">Most messages</span> {{if eq .SortOrder "messages"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
-            </a>
-        </div>
-
-        <h2 data-i18n="Projects">Projects</h2>
-        <div class="projects-grid">
-            {{range .Projects}}
-            <a href="/project?path={{.Path}}" class="project-card">
-                <h3>{{.Name}}</h3>
-                <p class="project-path">{{.Path}}</p>
-                <div class="project-meta">
-                    <span>{{len .Conversations}} conv.</span>
-                    <span>{{.TotalMessages}} msgs</span>
+        <div id="homeContent">
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-value">{{.TotalProjects}}</span>
+                    <span class="stat-label" data-i18n="Projects">Projects</span>
                 </div>
-                <time>{{formatDateTime .LastActivity}}</time>
-            </a>
-            {{end}}
+                <div class="stat">
+                    <span class="stat-value">{{.TotalConversations}}</span>
+                    <span class="stat-label" data-i18n="Conversations">Conversations</span>
+                </div>
+            </div>
+
+            <div class="sort-controls">
+                <label data-i18n="Sort by:">Sort by:</label>
+                <a href="?sort=last&dir={{if and (eq .SortOrder "last") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "last"}}active{{end}}">
+                    <span data-i18n="Last activity">Last activity</span> {{if eq .SortOrder "last"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                </a>
+                <a href="?sort=first&dir={{if and (eq .SortOrder "first") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "first"}}active{{end}}">
+                    <span data-i18n="First activity">First activity</span> {{if eq .SortOrder "first"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                </a>
+                <a href="?sort=name&dir={{if and (eq .SortOrder "name") (eq .SortDir "asc")}}desc{{else}}asc{{end}}" class="sort-btn {{if eq .SortOrder "name"}}active{{end}}">
+                    <span data-i18n="Name">Name</span> {{if eq .SortOrder "name"}}{{if eq .SortDir "asc"}}▲{{else}}▼{{end}}{{end}}
+                </a>
+                <a href="?sort=messages&dir={{if and (eq .SortOrder "messages") (eq .SortDir "desc")}}asc{{else}}desc{{end}}" class="sort-btn {{if eq .SortOrder "messages"}}active{{end}}">
+                    <span data-i18n="Most messages">Most messages</span> {{if eq .SortOrder "messages"}}{{if eq .SortDir "desc"}}▼{{else}}▲{{end}}{{end}}
+                </a>
+            </div>
+
+            <h2 data-i18n="Projects">Projects</h2>
+            <div class="projects-grid">
+                {{range .Projects}}
+                <a href="/project?path={{.Path}}" class="project-card">
+                    <h3>{{.Name}}</h3>
+                    <p class="project-path">{{.Path}}</p>
+                    <div class="project-meta">
+                        <span>{{len .Conversations}} conv.</span>
+                        <span>{{.TotalMessages}} msgs</span>
+                    </div>
+                    <time>{{formatDateTime .LastActivity}}</time>
+                </a>
+                {{end}}
+            </div>
+        </div>
+
+        <div id="searchResults" style="display: none;">
+            <div class="search-header">
+                <h2 id="searchResultsTitle"></h2>
+                <p id="searchResultsCount"></p>
+                <a href="#" id="searchResultsBack" onclick="hideSearchResults(); return false;" data-i18n="Back to projects">Back to projects</a>
+            </div>
+            <div class="conversations-list" id="searchResultsList"></div>
+            <div class="no-results" id="searchNoResults" style="display: none;">
+                <p data-i18n="No conversations found with that term.">No conversations found with that term.</p>
+                <p data-i18n="Search includes user messages and agent responses.">Search includes user messages and agent responses.</p>
+            </div>
         </div>
     </main>
 
@@ -347,18 +362,13 @@
                     e.target.blur();
                 }
                 if (e.key === 'Enter' && e.target === searchInput) {
-                    // If there's text, search locally first
-                    const query = e.target.value.trim();
-                    if (query && vim.searchMatches.length === 0) {
-                        e.preventDefault();
+                    e.preventDefault();
+                    var query = e.target.value.trim();
+                    if (query) {
                         searchItems(query);
-                        e.target.blur();
-                    } else if (vim.searchMatches.length > 0) {
-                        // Already have matches, blur and let user navigate with n/N
-                        e.preventDefault();
-                        e.target.blur();
+                        doAjaxSearch(query);
                     }
-                    // If no local results, let form submit normally
+                    e.target.blur();
                 }
                 // Update search as user types
                 if (e.target === searchInput) {
@@ -458,12 +468,124 @@
         if (document.readyState !== 'loading') {
             initVim();
         }
+
+        // AJAX Search
+        var searchAbortController = null;
+
+        function escapeHtml(text) {
+            var d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        function showSearchResults(data) {
+            console.log('showSearchResults called', data);
+            var home = document.getElementById('homeContent');
+            var container = document.getElementById('searchResults');
+            if (!home) { alert('ERROR: #homeContent not found'); return; }
+            if (!container) { alert('ERROR: #searchResults not found'); return; }
+            home.style.display = 'none';
+            container.style.display = 'block';
+
+            document.getElementById('searchResultsTitle').innerHTML =
+                '<span data-i18n="Results for">Results for</span> "' + escapeHtml(data.query) + '"';
+            document.getElementById('searchResultsCount').textContent =
+                data.count + ' conversations found';
+
+            var list = document.getElementById('searchResultsList');
+            var noResults = document.getElementById('searchNoResults');
+
+            if (data.results && data.results.length > 0) {
+                list.innerHTML = '';
+                noResults.style.display = 'none';
+                data.results.forEach(function(r) {
+                    var titles = '';
+                    if (r.titles && r.titles.length > 0) {
+                        titles = '<div class="conversation-titles">' +
+                            r.titles.map(function(t) {
+                                return '<span class="conversation-title">' + escapeHtml(t.substring(0, 40)) + '</span>';
+                            }).join('') + '</div>';
+                    }
+                    var previews = '';
+                    if (r.previews && r.previews.length > 0) {
+                        previews = r.previews.map(function(p) {
+                            return '<div class="search-preview">' + escapeHtml(p) + '</div>';
+                        }).join('');
+                    }
+                    list.innerHTML += '<a href="/conversation?id=' + encodeURIComponent(r.session_id) + '" class="conversation-card">' +
+                        '<div class="conversation-project">' + escapeHtml(r.project_name) +
+                        ' <span class="match-count">' + r.match_count + ' matches</span></div>' +
+                        titles +
+                        '<div class="conversation-preview">' + escapeHtml(r.first_message) + '</div>' +
+                        previews +
+                        '<div class="conversation-meta"><span>' + escapeHtml(r.first_time) + ' → ' + escapeHtml(r.last_time) + '</span>' +
+                        '<span>' + r.message_count + ' messages</span></div></a>';
+                });
+            } else {
+                list.innerHTML = '';
+                noResults.style.display = 'block';
+            }
+
+            if (typeof i18n !== 'undefined') i18n.updateAllTexts();
+        }
+
+        function hideSearchResults() {
+            document.getElementById('homeContent').style.display = '';
+            document.getElementById('searchResults').style.display = 'none';
+            var searchInput = document.querySelector('#searchForm input[name="q"]');
+            if (searchInput) searchInput.value = '';
+        }
+
+        function doAjaxSearch(query) {
+            if (searchAbortController) searchAbortController.abort();
+            searchAbortController = new AbortController();
+
+            var btn = document.querySelector('#searchForm button');
+            btn.textContent = '...';
+            btn.disabled = true;
+
+            console.log('doAjaxSearch: fetching', query);
+            fetch('/api/search?q=' + encodeURIComponent(query), { signal: searchAbortController.signal })
+                .then(function(resp) { console.log('fetch response', resp.status); return resp.json(); })
+                .then(function(data) {
+                    console.log('fetch data', JSON.stringify(data).substring(0, 200));
+                    btn.textContent = 'Search';
+                    btn.disabled = false;
+                    if (typeof i18n !== 'undefined') i18n.updateAllTexts();
+                    showSearchResults(data);
+                })
+                .catch(function(err) {
+                    console.error('fetch error', err);
+                    btn.textContent = 'Search';
+                    btn.disabled = false;
+                    if (typeof i18n !== 'undefined') i18n.updateAllTexts();
+                    if (err.name !== 'AbortError') {
+                        console.error('Search failed:', err);
+                    }
+                });
+        }
+
+        document.getElementById('searchForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var q = this.querySelector('input[name="q"]').value.trim();
+            if (!q) {
+                hideSearchResults();
+                return;
+            }
+            doAjaxSearch(q);
+        });
     </script>
     <script>
         (function() {
-            var es = new EventSource('/events');
-            es.onerror = function() { es.close(); setTimeout(function() { es = new EventSource('/events'); }, 2000); };
-            window.addEventListener('beforeunload', function() { es.close(); });
+            var es;
+            function connectEvents() {
+                if (es) { try { es.close(); } catch(e) {} }
+                es = new EventSource('/events');
+                es.onerror = function() { es.close(); setTimeout(connectEvents, 2000); };
+            }
+            connectEvents();
+            window.addEventListener('beforeunload', function() { if (es) es.close(); });
+            window.addEventListener('pageshow', function(e) { if (e.persisted) connectEvents(); });
         })();
     </script>
 </body>

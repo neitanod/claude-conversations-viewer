@@ -81,6 +81,7 @@
 
             <p class="conversation-date">{{formatDateTime .Conversation.FirstTime}} → {{formatDateTime .Conversation.LastTime}}</p>
             <p class="conversation-id"><span data-i18n="Session">Session</span>: {{.Conversation.SessionID}}</p>
+            {{if .Conversation.Project}}<p class="conversation-id"><span data-i18n="Path">Path</span>: {{.Conversation.Project}}</p>{{end}}
 
             <div class="conversation-stats">
                 <span data-i18n="[:n:] user messages" data-i18n-params='{"n": {{.Conversation.UserCount}}}'>{{.Conversation.UserCount}} user messages</span>
@@ -90,15 +91,30 @@
         </div>
 
         <div class="messages">
-            {{range $i, $msg := .Messages}}
-            <div class="message {{if eq .Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{$i}}">
-                <div class="message-header" onclick="toggleMessage({{$i}})">
-                    <span class="message-sender">{{if eq .Type "user"}}<span data-i18n="User">User</span>{{else}}<span data-i18n="Agent">Agent</span>{{end}}</span>
-                    <span class="message-time">{{formatDate .Timestamp}} {{formatTime .Timestamp}}</span>
+            {{range .Items}}
+            {{if .IsGroup}}
+            <div class="system-entries-group">
+                {{range .SystemEntries}}
+                <span class="system-entry-badge" onclick="toggleSystemEntry('system-{{.UUID}}')">{{.Type}}</span>
+                <div class="system-entry-panel" id="system-{{.UUID}}" style="display:none">
+                    <div class="system-entry-panel-header">
+                        <span class="system-entry-panel-type">{{.Type}}</span>
+                        {{if not .Timestamp.IsZero}}<span class="system-entry-time">{{formatDate .Timestamp}} {{formatTime .Timestamp}}</span>{{end}}
+                        <span class="system-entry-close" onclick="toggleSystemEntry('system-{{.UUID}}')">&times;</span>
+                    </div>
+                    <pre class="system-entry-json">{{.RawJSON}}</pre>
                 </div>
-                {{if .ContentBlocks}}
-                <div class="message-content-blocks" id="content-{{$i}}">
-                    {{range .ContentBlocks}}
+                {{end}}
+            </div>
+            {{else}}
+            <div class="message {{if eq .Message.Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{.Index}}">
+                <div class="message-header" onclick="toggleMessage({{.Index}})">
+                    <span class="message-sender">{{if eq .Message.Type "user"}}<span data-i18n="User">User</span>{{else}}<span data-i18n="Agent">Agent</span>{{end}}</span>
+                    <span class="message-time">{{formatDate .Message.Timestamp}} {{formatTime .Message.Timestamp}}</span>
+                </div>
+                {{if .Message.ContentBlocks}}
+                <div class="message-content-blocks" id="content-{{.Index}}">
+                    {{range .Message.ContentBlocks}}
                     {{if eq .Type "text"}}
                     <div class="content-text">{{.Text}}</div>
                     {{else if eq .Type "thinking"}}
@@ -112,16 +128,16 @@
                     {{end}}
                     {{end}}
                 </div>
-                {{else if .Content}}
-                <div class="message-content {{if gt (len .Content) 500}}collapsed{{end}}" id="content-legacy-{{$i}}">{{.Content}}</div>
-                {{if gt (len .Content) 500}}
-                <div class="message-toggle" id="toggle-{{$i}}" onclick="toggleMessage({{$i}})" data-i18n="Show more">
+                {{else if .Message.Content}}
+                <div class="message-content {{if gt (len .Message.Content) 500}}collapsed{{end}}" id="content-legacy-{{.Index}}">{{.Message.Content}}</div>
+                {{if gt (len .Message.Content) 500}}
+                <div class="message-toggle" id="toggle-{{.Index}}" onclick="toggleMessage({{.Index}})" data-i18n="Show more">
                     Show more
                 </div>
                 {{end}}
-                {{if .ToolBlocks}}
+                {{if .Message.ToolBlocks}}
                 <div class="tool-blocks">
-                    {{range .ToolBlocks}}
+                    {{range .Message.ToolBlocks}}
                     <div class="tool-block">
                         <div class="tool-header">🔧 {{.Name}}</div>
                         {{if .Input}}<pre class="tool-input">{{.Input}}</pre>{{end}}
@@ -132,6 +148,7 @@
                 {{end}}
                 {{end}}
             </div>
+            {{end}}
             {{end}}
         </div>
     </main>
@@ -226,6 +243,15 @@
                 if (dropdown) dropdown.classList.remove('show');
             }
         });
+
+        function toggleSystemEntry(id) {
+            const el = document.getElementById(id);
+            if (el.style.display === 'none') {
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'none';
+            }
+        }
 
         function toggleMessage(index) {
             const content = document.getElementById('content-' + index);
@@ -981,9 +1007,15 @@
     </script>
     <script>
         (function() {
-            var es = new EventSource('/events');
-            es.onerror = function() { es.close(); setTimeout(function() { es = new EventSource('/events'); }, 2000); };
-            window.addEventListener('beforeunload', function() { es.close(); });
+            var es;
+            function connectEvents() {
+                if (es) { try { es.close(); } catch(e) {} }
+                es = new EventSource('/events');
+                es.onerror = function() { es.close(); setTimeout(connectEvents, 2000); };
+            }
+            connectEvents();
+            window.addEventListener('beforeunload', function() { if (es) es.close(); });
+            window.addEventListener('pageshow', function(e) { if (e.persisted) connectEvents(); });
         })();
     </script>
 </body>

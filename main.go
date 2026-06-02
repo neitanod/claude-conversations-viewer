@@ -169,13 +169,15 @@ type ContentBlock struct {
 // Message represents a single message in a conversation (user or assistant)
 type Message struct {
 	UUID          string         `json:"uuid"`
-	Type          string         `json:"type"` // "user" or "assistant"
+	Type          string         `json:"type"` // "user", "assistant", or system entry type
 	Timestamp     time.Time      `json:"timestamp"`
 	Content       string         `json:"content"`       // Legacy: all text concatenated
 	Role          string         `json:"role"`
 	Model         string         `json:"model,omitempty"`
 	ToolBlocks    []ToolBlock    `json:"toolBlocks,omitempty"`    // Legacy
 	ContentBlocks []ContentBlock `json:"contentBlocks,omitempty"` // New: ordered blocks
+	IsSystemEntry bool           `json:"isSystemEntry,omitempty"`
+	RawJSON       string         `json:"rawJSON,omitempty"`
 }
 
 // ToolBlock represents a tool invocation with its result (legacy, kept for compatibility)
@@ -447,12 +449,37 @@ func projectDirToPath(dirName string) string {
 		rest := strings.ReplaceAll(dirName[3:], "-", `\`)
 		return drive + `\` + rest
 	}
-	// Linux/macOS: "-home-sebas-robotin" -> "/home/sebas/robotin"
-	path := strings.ReplaceAll(dirName, "-", "/")
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
+	// Linux/macOS: the directory name uses "-" as separator, but real paths
+	// may also contain "-". Resolve the ambiguity by checking which path
+	// actually exists on disk.
+	// e.g. "home-sebas-robotin-apps-claude-conversations-viewer"
+	// -> "/home/sebas/robotin/apps/claude-conversations-viewer"
+	parts := strings.Split(dirName, "-")
+	return resolveProjectPath(parts, 0, "/")
+}
+
+func resolveProjectPath(parts []string, start int, prefix string) string {
+	if start >= len(parts) {
+		return prefix
 	}
-	return path
+	// Try increasingly longer segments (greedy: prefer longer existing paths)
+	best := ""
+	for end := len(parts); end > start; end-- {
+		segment := strings.Join(parts[start:end], "-")
+		candidate := filepath.Join(prefix, segment)
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			rest := resolveProjectPath(parts, end, candidate)
+			if rest != "" {
+				return rest
+			}
+		}
+		if best == "" {
+			best = segment
+		}
+	}
+	// Fallback: use single part as directory name
+	candidate := filepath.Join(prefix, parts[start])
+	return resolveProjectPath(parts, start+1, candidate)
 }
 
 func isASCIILetter(b byte) bool {
@@ -486,13 +513,18 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 	toolResults := make(map[string]string) // tool_use_id -> result content
 
 	// First pass: collect all tool results
-	var entries []RawEntry
+	type parsedEntry struct {
+		entry   RawEntry
+		rawLine string
+	}
+	var entries []parsedEntry
 	for scanner.Scan() {
+		line := scanner.Text()
 		var entry RawEntry
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
-		entries = append(entries, entry)
+		entries = append(entries, parsedEntry{entry: entry, rawLine: line})
 
 		// Collect tool results
 		if entry.Type == "user" && entry.Message != nil {
@@ -506,7 +538,9 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 	// Second pass: build messages with tool blocks
 	var lastAssistantMsg *Message // Track last assistant message for merging
 
-	for _, entry := range entries {
+	for _, pe := range entries {
+		entry := pe.entry
+
 		// Collect summaries as titles
 		if entry.Type == "summary" && entry.Summary != "" {
 			if !titlesMap[entry.Summary] {
@@ -517,6 +551,16 @@ func (a *App) parseConversationFile(filePath, sessionID, projectPath, projectDir
 		}
 
 		if entry.Type != "user" && entry.Type != "assistant" {
+			ts, _ := time.Parse(time.RFC3339, entry.Timestamp)
+			msg := Message{
+				UUID:          entry.UUID,
+				Type:          entry.Type,
+				Timestamp:     ts,
+				IsSystemEntry: true,
+				RawJSON:       prettyPrintJSON(pe.rawLine),
+			}
+			conv.Messages = append(conv.Messages, msg)
+			lastAssistantMsg = nil
 			continue
 		}
 
@@ -749,6 +793,18 @@ func isToolResultContent(raw json.RawMessage) bool {
 	return false
 }
 
+func prettyPrintJSON(raw string) string {
+	var obj interface{}
+	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
+		return raw
+	}
+	pretty, err := json.MarshalIndent(obj, "", "  ")
+	if err != nil {
+		return raw
+	}
+	return string(pretty)
+}
+
 func truncateString(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.TrimSpace(s)
@@ -756,6 +812,37 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// DisplayItem wraps either a single message or a group of consecutive system entries
+type DisplayItem struct {
+	IsGroup       bool      `json:"isGroup"`
+	Message       Message   `json:"message,omitempty"`
+	SystemEntries []Message `json:"systemEntries,omitempty"`
+	Index         int       `json:"index"` // global index for vim navigation
+}
+
+func groupMessages(messages []Message) []DisplayItem {
+	var items []DisplayItem
+	globalIdx := 0
+	for i := 0; i < len(messages); {
+		if messages[i].IsSystemEntry {
+			item := DisplayItem{IsGroup: true, Index: globalIdx}
+			for i < len(messages) && messages[i].IsSystemEntry {
+				messages[i].UUID = fmt.Sprintf("%d", globalIdx)
+				item.SystemEntries = append(item.SystemEntries, messages[i])
+				globalIdx++
+				i++
+			}
+			items = append(items, item)
+		} else {
+			item := DisplayItem{Message: messages[i], Index: globalIdx}
+			globalIdx++
+			i++
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 // Sorting functions
@@ -1028,6 +1115,8 @@ func (a *App) handleConversation(w http.ResponseWriter, r *http.Request) {
 		return messages[i].Timestamp.Before(messages[j].Timestamp)
 	})
 
+	items := groupMessages(messages)
+
 	tmpl, err := template.New("conversation.html").Funcs(templateFuncs).ParseFS(templatesFS, "templates/conversation.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1037,9 +1126,11 @@ func (a *App) handleConversation(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Conversation *Conversation
 		Messages     []Message
+		Items        []DisplayItem
 	}{
 		Conversation: conv,
 		Messages:     messages,
+		Items:        items,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1064,64 +1155,98 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Previews     []string
 	}
 
-	var results []SearchResult
-
+	// Collect conversations to search
+	var toSearch []*Conversation
+	a.mu.Lock()
 	for _, conv := range a.conversations {
-		// Filter by project if specified
 		if projectFilter != "" && conv.Project != projectFilter {
 			continue
 		}
-		// Load full conversation for search
-		fullConv, err := a.loadFullConversation(conv.SessionID)
-		if err != nil {
-			continue
-		}
+		toSearch = append(toSearch, conv)
+	}
+	a.mu.Unlock()
 
-		matchCount := 0
-		var previews []string
+	// Search in parallel with a worker pool
+	type indexedResult struct {
+		idx    int
+		result SearchResult
+	}
+	resultsCh := make(chan indexedResult, len(toSearch))
+	sem := make(chan struct{}, runtime.NumCPU()*2) // limit concurrent file reads
+	var wg sync.WaitGroup
 
-		for _, msg := range fullConv.Messages {
-			content := strings.ToLower(msg.Content)
-			if strings.Contains(content, query) {
-				matchCount++
-				// Extract preview around match
-				idx := strings.Index(content, query)
-				start := idx - 50
-				if start < 0 {
-					start = 0
-				}
-				end := idx + len(query) + 50
-				if end > len(msg.Content) {
-					end = len(msg.Content)
-				}
-				preview := msg.Content[start:end]
-				if start > 0 {
-					preview = "..." + preview
-				}
-				if end < len(msg.Content) {
-					preview = preview + "..."
-				}
-				previews = append(previews, preview)
-				if len(previews) >= 3 {
-					break // Limit previews
+	for i, conv := range toSearch {
+		wg.Add(1)
+		go func(idx int, conv *Conversation) {
+			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
+
+			// Read and parse file directly to avoid holding the global lock
+			filePath := filepath.Join(a.claudeDir, "projects", conv.ProjectDir, conv.SessionID+".jsonl")
+			fullConv, err := a.parseConversationFile(filePath, conv.SessionID, conv.Project, conv.ProjectDir)
+			if err != nil {
+				return
+			}
+
+			matchCount := 0
+			var previews []string
+
+			for _, msg := range fullConv.Messages {
+				content := strings.ToLower(msg.Content)
+				if strings.Contains(content, query) {
+					matchCount++
+					// Extract preview around match
+					idx := strings.Index(content, query)
+					start := idx - 50
+					if start < 0 {
+						start = 0
+					}
+					end := idx + len(query) + 50
+					if end > len(msg.Content) {
+						end = len(msg.Content)
+					}
+					preview := msg.Content[start:end]
+					if start > 0 {
+						preview = "..." + preview
+					}
+					if end < len(msg.Content) {
+						preview = preview + "..."
+					}
+					previews = append(previews, preview)
+					if len(previews) >= 3 {
+						break
+					}
 				}
 			}
-		}
 
-		// Also search in titles
-		for _, title := range conv.Titles {
-			if strings.Contains(strings.ToLower(title), query) {
-				matchCount++
+			// Also search in titles
+			for _, title := range conv.Titles {
+				if strings.Contains(strings.ToLower(title), query) {
+					matchCount++
+				}
 			}
-		}
 
-		if matchCount > 0 {
-			results = append(results, SearchResult{
-				Conversation: conv,
-				MatchCount:   matchCount,
-				Previews:     previews,
-			})
-		}
+			if matchCount > 0 {
+				resultsCh <- indexedResult{idx: idx, result: SearchResult{
+					Conversation: conv,
+					MatchCount:   matchCount,
+					Previews:     previews,
+				}}
+			}
+		}(i, conv)
+	}
+
+	// Close channel when all goroutines finish
+	go func() {
+		wg.Wait()
+		close(resultsCh)
+	}()
+
+	var results []SearchResult
+	for ir := range resultsCh {
+		_ = ir.idx
+		results = append(results, ir.result)
 	}
 
 	// Sort by match count, then by last activity
@@ -1162,6 +1287,137 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	tmpl.Execute(w, data)
+}
+
+func (a *App) handleAPISearch(w http.ResponseWriter, r *http.Request) {
+	query := strings.ToLower(r.URL.Query().Get("q"))
+	projectFilter := r.URL.Query().Get("project")
+	if query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"results": []struct{}{}, "count": 0})
+		return
+	}
+
+	// Collect conversations to search
+	var toSearch []*Conversation
+	a.mu.Lock()
+	for _, conv := range a.conversations {
+		if projectFilter != "" && conv.Project != projectFilter {
+			continue
+		}
+		toSearch = append(toSearch, conv)
+	}
+	a.mu.Unlock()
+
+	type apiResult struct {
+		SessionID   string   `json:"session_id"`
+		ProjectName string   `json:"project_name"`
+		Titles      []string `json:"titles"`
+		FirstMsg    string   `json:"first_message"`
+		FirstTime   string   `json:"first_time"`
+		LastTime    string   `json:"last_time"`
+		MsgCount    int      `json:"message_count"`
+		MatchCount  int      `json:"match_count"`
+		Previews    []string `json:"previews"`
+	}
+
+	type indexedResult struct {
+		idx    int
+		result apiResult
+	}
+	resultsCh := make(chan indexedResult, len(toSearch))
+	sem := make(chan struct{}, runtime.NumCPU()*2)
+	var wg sync.WaitGroup
+
+	for i, conv := range toSearch {
+		wg.Add(1)
+		go func(idx int, conv *Conversation) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			filePath := filepath.Join(a.claudeDir, "projects", conv.ProjectDir, conv.SessionID+".jsonl")
+			fullConv, err := a.parseConversationFile(filePath, conv.SessionID, conv.Project, conv.ProjectDir)
+			if err != nil {
+				return
+			}
+
+			matchCount := 0
+			var previews []string
+
+			for _, msg := range fullConv.Messages {
+				content := strings.ToLower(msg.Content)
+				if strings.Contains(content, query) {
+					matchCount++
+					idx := strings.Index(content, query)
+					start := idx - 50
+					if start < 0 {
+						start = 0
+					}
+					end := idx + len(query) + 50
+					if end > len(msg.Content) {
+						end = len(msg.Content)
+					}
+					preview := msg.Content[start:end]
+					if start > 0 {
+						preview = "..." + preview
+					}
+					if end < len(msg.Content) {
+						preview = preview + "..."
+					}
+					previews = append(previews, preview)
+					if len(previews) >= 3 {
+						break
+					}
+				}
+			}
+
+			for _, title := range conv.Titles {
+				if strings.Contains(strings.ToLower(title), query) {
+					matchCount++
+				}
+			}
+
+			if matchCount > 0 {
+				resultsCh <- indexedResult{idx: idx, result: apiResult{
+					SessionID:   conv.SessionID,
+					ProjectName: conv.ProjectName,
+					Titles:      conv.Titles,
+					FirstMsg:    truncateString(conv.FirstMessage, 100),
+					FirstTime:   conv.FirstTime.Format("2006-01-02 15:04"),
+					LastTime:    conv.LastTime.Format("2006-01-02 15:04"),
+					MsgCount:    conv.MessageCount,
+					MatchCount:  matchCount,
+					Previews:    previews,
+				}}
+			}
+		}(i, conv)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsCh)
+	}()
+
+	var results []apiResult
+	for ir := range resultsCh {
+		_ = ir.idx
+		results = append(results, ir.result)
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].MatchCount != results[j].MatchCount {
+			return results[i].MatchCount > results[j].MatchCount
+		}
+		return results[i].LastTime > results[j].LastTime
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"results": results,
+		"count":   len(results),
+		"query":   r.URL.Query().Get("q"),
+	})
 }
 
 func (a *App) handleAPIProjects(w http.ResponseWriter, r *http.Request) {
@@ -1477,6 +1733,7 @@ func main() {
 	http.HandleFunc("/conversation", app.requireAuth(app.handleConversation))
 	http.HandleFunc("/search", app.requireAuth(app.handleSearch))
 	http.HandleFunc("/refresh", app.requireAuth(app.handleRefresh))
+	http.HandleFunc("/api/search", app.requireAuth(app.handleAPISearch))
 	http.HandleFunc("/api/projects", app.requireAuth(app.handleAPIProjects))
 	http.HandleFunc("/api/conversation", app.requireAuth(app.handleAPIConversation))
 
