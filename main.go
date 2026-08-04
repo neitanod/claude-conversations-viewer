@@ -419,23 +419,7 @@ func (a *App) loadAllConversations() error {
 
 	// Group by project
 	for _, conv := range a.conversations {
-		proj, exists := a.projects[conv.Project]
-		if !exists {
-			proj = &Project{
-				Path:          conv.Project,
-				Name:          filepath.Base(conv.Project),
-				Conversations: []*Conversation{},
-			}
-			a.projects[conv.Project] = proj
-		}
-		proj.Conversations = append(proj.Conversations, conv)
-		proj.TotalMessages += conv.MessageCount
-		if proj.LastActivity.Before(conv.LastTime) {
-			proj.LastActivity = conv.LastTime
-		}
-		if proj.FirstActivity.IsZero() || conv.FirstTime.Before(proj.FirstActivity) {
-			proj.FirstActivity = conv.FirstTime
-		}
+		a.indexInProject(conv)
 	}
 
 	return nil
@@ -958,6 +942,82 @@ func sortConversations(convs []*Conversation, order SortOrder, dir SortDir) {
 	}
 }
 
+// adoptConversation busca en el disco una conversación que el índice no tiene y la
+// incorpora. Se llama con a.mu tomado.
+//
+// Busca UNA y no rescanea `~/.claude/projects` entero a propósito: son cientos de
+// conversaciones y varios segundos de arranque, y para mostrar una alcanza con
+// encontrar su archivo. El botón Refresh sigue siendo el que rearma el índice
+// completo, que es otra cosa — ahí lo que se quiere es la LISTA al día.
+//
+// El glob busca en todas las carpetas de proyecto en vez de derivar cuál le toca: el
+// nombre de esas carpetas es una convención interna de Claude Code, y un id es único
+// igual, así que buscarlo por nombre encuentra la conversación aunque haya arrancado
+// con otro cwd.
+func (a *App) adoptConversation(sessionID string) (*Conversation, error) {
+	// El id llega por la query string y termina adentro de un patrón de glob: sin
+	// esto, uno con separadores de ruta adentro elegiría qué archivo abrir.
+	if !validSessionID(sessionID) {
+		return nil, fmt.Errorf("conversation not found")
+	}
+
+	matches, err := filepath.Glob(filepath.Join(a.claudeDir, "projects", "*", sessionID+".jsonl"))
+	if err != nil || len(matches) == 0 {
+		return nil, fmt.Errorf("conversation not found")
+	}
+
+	path := matches[0]
+	projectDir := filepath.Base(filepath.Dir(path))
+	conv, err := a.parseConversationFile(path, sessionID, projectDirToPath(projectDir), projectDir)
+	if err != nil {
+		return nil, err
+	}
+
+	a.conversations[sessionID] = conv
+	// Y queda colgada de su proyecto, no solo en el mapa: una conversación que se
+	// abre por link y después no aparece en la lista de su proyecto se lee como si
+	// el visor la hubiera perdido.
+	a.indexInProject(conv)
+	return conv, nil
+}
+
+// validSessionID acepta lo que Claude Code genera (un uuid) y nada más exótico.
+func validSessionID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		ok := r == '-' || r == '_' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// indexInProject cuelga una conversación del proyecto al que pertenece, creándolo si
+// es el primero que aparece. Se llama con a.mu tomado.
+func (a *App) indexInProject(conv *Conversation) {
+	proj, exists := a.projects[conv.Project]
+	if !exists {
+		proj = &Project{
+			Path:          conv.Project,
+			Name:          filepath.Base(conv.Project),
+			Conversations: []*Conversation{},
+		}
+		a.projects[conv.Project] = proj
+	}
+	proj.Conversations = append(proj.Conversations, conv)
+	proj.TotalMessages += conv.MessageCount
+	if proj.LastActivity.Before(conv.LastTime) {
+		proj.LastActivity = conv.LastTime
+	}
+	if proj.FirstActivity.IsZero() || conv.FirstTime.Before(proj.FirstActivity) {
+		proj.FirstActivity = conv.FirstTime
+	}
+}
+
 // Load full messages for a conversation (lazy loading)
 func (a *App) loadFullConversation(sessionID string) (*Conversation, error) {
 	a.mu.Lock()
@@ -965,7 +1025,16 @@ func (a *App) loadFullConversation(sessionID string) (*Conversation, error) {
 
 	conv, exists := a.conversations[sessionID]
 	if !exists {
-		return nil, fmt.Errorf("conversation not found")
+		// El índice se arma UNA sola vez, al arrancar. Una conversación que nació
+		// después no está en el mapa, y hasta acá eso era un 404 aunque su .jsonl
+		// estuviera ahí nomás, en el disco. Caían todas las sesiones recién
+		// nacidas — que son justamente las que alguien abre por un link recién
+		// generado, como los que ahora pone Agencia en la página de cada Task.
+		adopted, err := a.adoptConversation(sessionID)
+		if err != nil {
+			return nil, err
+		}
+		conv = adopted
 	}
 
 	if conv.FullyLoaded && len(conv.Messages) > 0 {

@@ -1047,6 +1047,79 @@ func TestLoadFullConversation(t *testing.T) {
 	})
 }
 
+// Una conversación que nació DESPUÉS de que se armó el índice se abre igual.
+//
+// Es el caso que rompía en la vida real: el visor corre como servicio y carga el
+// índice al arrancar, así que toda sesión nueva —justo la que uno quiere espiar por
+// un link recién generado— contestaba "conversation not found" con el .jsonl ahí
+// nomás, en el disco.
+func TestLoadFullConversationAdoptsOneBornAfterTheIndex(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	app := &App{
+		claudeDir:     filepath.Join(tmpDir, ".claude"),
+		projects:      make(map[string]*Project),
+		conversations: make(map[string]*Conversation),
+		cache:         &MetadataCache{Conversations: make(map[string]*ConversationMeta)},
+	}
+
+	// El índice ya está armado y vacío: la conversación aparece recién ahora.
+	projectDir := filepath.Join(tmpDir, ".claude", "projects", "-test-recien-nacida")
+	os.MkdirAll(projectDir, 0755)
+	createTestConversation(t, projectDir, "nacida-despues", []map[string]interface{}{
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hola"},
+		},
+		{
+			"type":      "assistant",
+			"uuid":      "a1",
+			"timestamp": "2025-01-15T10:00:01Z",
+			"message":   map[string]interface{}{"role": "assistant", "content": "Hola de vuelta"},
+		},
+	})
+
+	conv, err := app.loadFullConversation("nacida-despues")
+	if err != nil {
+		t.Fatalf("no la encontró en el disco: %v", err)
+	}
+	if len(conv.Messages) != 2 {
+		t.Errorf("esperaba 2 mensajes, hay %d", len(conv.Messages))
+	}
+	if _, ok := app.conversations["nacida-despues"]; !ok {
+		t.Error("quedó fuera del índice: la próxima visita la vuelve a buscar en el disco")
+	}
+	// Y colgada de su proyecto: si solo entrara al mapa, se abriría por link pero no
+	// figuraría en la lista de su proyecto, que se lee como si el visor la perdiera.
+	proj, ok := app.projects[conv.Project]
+	if !ok || len(proj.Conversations) != 1 {
+		t.Errorf("no quedó colgada de su proyecto: %v", app.projects)
+	}
+}
+
+// El id viaja en la query string y termina adentro de un glob. Uno con separadores de
+// ruta adentro elegiría qué archivo abrir, así que se rechaza antes de mirar el disco.
+func TestLoadFullConversationRejectsAnIDThatIsAPath(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	app := &App{
+		claudeDir:     filepath.Join(tmpDir, ".claude"),
+		projects:      make(map[string]*Project),
+		conversations: make(map[string]*Conversation),
+		cache:         &MetadataCache{Conversations: make(map[string]*ConversationMeta)},
+	}
+
+	for _, id := range []string{"../../../etc/passwd", "*", "-test/conv1"} {
+		if _, err := app.loadFullConversation(id); err == nil {
+			t.Errorf("aceptó %q como id de conversación", id)
+		}
+	}
+}
+
 // Test search in titles
 func TestSearchInTitles(t *testing.T) {
 	tmpDir, cleanup := setupTestEnv(t)
