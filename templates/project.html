@@ -63,7 +63,7 @@
 
         <div class="project-header">
             <h2>{{.Name}}</h2>
-            <p class="project-path">{{.Path}}</p>
+            <p class="project-path">{{breakablePath .Path}}</p>
             <div class="project-meta">
                 <span>{{len .Conversations}} <span data-i18n="conversations">conversations</span></span>
                 <span>{{.TotalMessages}} <span data-i18n="messages">messages</span></span>

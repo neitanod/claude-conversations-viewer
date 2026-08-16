@@ -167,6 +167,9 @@ Cada archivo `.jsonl` contiene líneas JSON con:
 - `type: "assistant"` - Respuesta del asistente
 - `type: "summary"` - Títulos/resúmenes de la conversación
 
+Las entradas de usuario y de asistente traen además `cwd`, la ruta literal donde
+corría Claude Code.
+
 ## Configuración
 
 - **Puerto:** 8042 por defecto, configurable como primer argumento CLI
@@ -183,6 +186,18 @@ Se cachean los metadatos por archivo con el `modTime`. Si el archivo no cambió,
 
 ### Ordenamiento en memoria
 Todo el ordenamiento se hace en memoria. Con 3000+ conversaciones, esto sigue siendo instantáneo.
+
+### La ruta del proyecto sale del `cwd`, no del nombre de la carpeta
+El nombre de carpeta de `~/.claude/projects/` reemplaza por `-` todo lo que no es
+alfanumérico: las barras, los puntos y los guiones de verdad quedan iguales, y de ahí
+no se puede volver. Se lee entonces el `cwd` de la primera conversación de la carpeta
+que lo traiga y se valida que codifique a ese nombre (mismo largo, alfanuméricos
+iguales, y cada `-` del nombre puede corresponder a cualquier no alfanumérico de la
+ruta) — así una conversación copiada desde otra carpeta no se hace pasar por esta.
+
+Sin `cwd` válido queda la heurística vieja: probar contra el disco qué partición del
+nombre existe. Funciona solo mientras la carpeta real siga estando, y las que más se
+miran acá son las que ya se borraron.
 
 ### Sin base de datos
 No se usa SQLite ni similar para mantener la simplicidad. Los archivos JSONL ya están en disco y son suficientemente rápidos.

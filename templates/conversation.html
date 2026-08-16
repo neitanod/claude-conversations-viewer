@@ -81,7 +81,7 @@
 
             <p class="conversation-date">{{formatDateTime .Conversation.FirstTime}} → {{formatDateTime .Conversation.LastTime}}</p>
             <p class="conversation-id"><span data-i18n="Session">Session</span>: {{.Conversation.SessionID}}</p>
-            {{if .Conversation.Project}}<p class="conversation-id"><span data-i18n="Path">Path</span>: {{.Conversation.Project}}</p>{{end}}
+            {{if .Conversation.Project}}<p class="conversation-id conversation-path"><span data-i18n="Path">Path</span>: {{breakablePath .Conversation.Project}}</p>{{end}}
 
             <div class="conversation-stats">
                 <span data-i18n="[:n:] user messages" data-i18n-params='{"n": {{.Conversation.UserCount}}}'>{{.Conversation.UserCount}} user messages</span>

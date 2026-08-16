@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -343,13 +344,14 @@ func (a *App) loadAllConversations() error {
 		}
 
 		projectDir := entry.Name()
-		projectPath := projectDirToPath(projectDir)
 
 		convDir := filepath.Join(projectsDir, projectDir)
 		convFiles, err := os.ReadDir(convDir)
 		if err != nil {
 			continue
 		}
+
+		projectPath := projectPathFromEntries(convDir, projectDir, convFiles)
 
 		for _, cf := range convFiles {
 			if !strings.HasSuffix(cf.Name(), ".jsonl") {
@@ -423,6 +425,118 @@ func (a *App) loadAllConversations() error {
 	}
 
 	return nil
+}
+
+// projectPathForDir dice qué ruta real representa una carpeta de
+// `~/.claude/projects/`. Prefiere el `cwd` que cada conversación guarda adentro,
+// porque es la ruta literal: el nombre de la carpeta pisa con "-" todo lo que no es
+// alfanumérico —las barras, los puntos y los guiones de verdad— y de ahí no se puede
+// volver. Adivinar contra el disco solo funciona mientras la carpeta siga existiendo,
+// y las que más se miran acá son justamente las que ya se borraron.
+func projectPathForDir(convDir, dirName string) string {
+	entries, err := os.ReadDir(convDir)
+	if err != nil {
+		return projectDirToPath(dirName)
+	}
+	return projectPathFromEntries(convDir, dirName, entries)
+}
+
+func projectPathFromEntries(convDir, dirName string, entries []os.DirEntry) string {
+	type candidate struct {
+		name    string
+		modTime time.Time
+	}
+	var files []candidate
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		var mod time.Time
+		if info, err := e.Info(); err == nil {
+			mod = info.ModTime()
+		}
+		files = append(files, candidate{e.Name(), mod})
+	}
+	// Del más nuevo al más viejo: el campo `cwd` es un agregado del formato, así que
+	// una carpeta con conversaciones viejas y nuevas lo tiene solo en las nuevas.
+	sort.Slice(files, func(i, j int) bool { return files[i].modTime.After(files[j].modTime) })
+
+	for i, f := range files {
+		if i >= cwdScanMaxFiles {
+			break
+		}
+		if cwd := cwdFromConversationFile(filepath.Join(convDir, f.name), dirName); cwd != "" {
+			return cwd
+		}
+	}
+	return projectDirToPath(dirName)
+}
+
+const (
+	// Cuántas conversaciones de una misma carpeta se miran antes de rendirse. Con
+	// una que traiga el cwd alcanza: todas las de una carpeta comparten la ruta.
+	cwdScanMaxFiles = 5
+	// Cuánto se lee de cada una. El cwd viene en las primeras entradas, y hay
+	// conversaciones de decenas de megas que no tiene sentido recorrer enteras.
+	cwdScanMaxBytes = 1 << 20
+)
+
+// cwdFromConversationFile devuelve el primer `cwd` del archivo que efectivamente
+// codifica a `dirName`. El chequeo importa: una conversación puede haber quedado
+// copiada en otra carpeta, y entonces su cwd no dice nada de esta.
+func cwdFromConversationFile(path, dirName string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(io.LimitReader(file, cwdScanMaxBytes))
+	scanner.Buffer(make([]byte, 0, 64*1024), cwdScanMaxBytes)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if !strings.Contains(string(line), `"cwd"`) {
+			continue
+		}
+		var entry struct {
+			Cwd string `json:"cwd"`
+		}
+		// La última línea puede venir cortada por el límite de lectura; ahí falla el
+		// unmarshal y seguimos, que es lo que corresponde.
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+		if entry.Cwd != "" && dirNameEncodesPath(dirName, entry.Cwd) {
+			return entry.Cwd
+		}
+	}
+	return ""
+}
+
+// dirNameEncodesPath dice si `dirName` es el nombre de carpeta que le corresponde a
+// `path`. La codificación reemplaza cada carácter no alfanumérico por "-", así que
+// alcanza con que coincidan carácter a carácter salvo donde el nombre trae un "-" y
+// la ruta cualquier otra cosa que no sea alfanumérica.
+func dirNameEncodesPath(dirName, path string) bool {
+	name := []rune(dirName)
+	real := []rune(path)
+	if len(name) != len(real) {
+		return false
+	}
+	for i, r := range name {
+		if r == real[i] {
+			continue
+		}
+		if r == '-' && !isAlphanumeric(real[i]) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isAlphanumeric(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
 func projectDirToPath(dirName string) string {
@@ -967,8 +1081,9 @@ func (a *App) adoptConversation(sessionID string) (*Conversation, error) {
 	}
 
 	path := matches[0]
-	projectDir := filepath.Base(filepath.Dir(path))
-	conv, err := a.parseConversationFile(path, sessionID, projectDirToPath(projectDir), projectDir)
+	convDir := filepath.Dir(path)
+	projectDir := filepath.Base(convDir)
+	conv, err := a.parseConversationFile(path, sessionID, projectPathForDir(convDir, projectDir), projectDir)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,6 +1194,23 @@ var templateFuncs = template.FuncMap{
 		escaped := template.HTMLEscapeString(s)
 		return template.HTML(strings.ReplaceAll(escaped, "\n", "<br>"))
 	},
+	"breakablePath": breakablePath,
+}
+
+// breakablePath marca dónde puede quebrar una ruta al imprimirla. Una ruta no tiene
+// espacios, así que sin esto el navegador la deja entera y ensancha la página; con
+// `<wbr>` después de cada separador quiebra donde se lee bien, en vez de partir una
+// palabra al medio como haría `word-break: break-all`.
+func breakablePath(path string) template.HTML {
+	var out strings.Builder
+	for _, r := range path {
+		out.WriteString(template.HTMLEscapeString(string(r)))
+		switch r {
+		case '/', '\\', '-':
+			out.WriteString("<wbr>")
+		}
+	}
+	return template.HTML(out.String())
 }
 
 // Handlers

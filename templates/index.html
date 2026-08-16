@@ -88,7 +88,7 @@
                 {{range .Projects}}
                 <a href="/project?path={{.Path}}" class="project-card">
                     <h3>{{.Name}}</h3>
-                    <p class="project-path">{{.Path}}</p>
+                    <p class="project-path">{{breakablePath .Path}}</p>
                     <div class="project-meta">
                         <span>{{len .Conversations}} conv.</span>
                         <span>{{.TotalMessages}} msgs</span>

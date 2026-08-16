@@ -77,6 +77,175 @@ func TestProjectDirToPath(t *testing.T) {
 	}
 }
 
+// El nombre de carpeta pisa con "-" todo lo que no es alfanumérico, así que un "-"
+// del nombre puede venir de una barra, de un punto o de un guión de verdad. El
+// validador tiene que aceptar las tres y rechazar cualquier otra diferencia.
+func TestDirNameEncodesPath(t *testing.T) {
+	tests := []struct {
+		dirName string
+		path    string
+		want    bool
+	}{
+		{"-home-sebas-robotin", "/home/sebas/robotin", true},
+		{"-tmp-at-import-test", "/tmp/at-import-test", true},
+		{"-home-sebas-apps-invaders--workspace-t-318-bala", "/home/sebas/apps/invaders/.workspace/t-318-bala", true},
+		{"C--Users-Juan-Patricio", `C:\Users\Juan-Patricio`, true},
+		{"-home-sebas-robotin", "/home/sebas/otro-x", false},
+		{"-home-sebas", "/home/sebas/robotin", false},
+		{"-home-sebas-x", "/home/sebas", false},
+		{"", "", true},
+		{"-home-café-x", "/home/café/x", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.dirName+" "+tt.path, func(t *testing.T) {
+			if got := dirNameEncodesPath(tt.dirName, tt.path); got != tt.want {
+				t.Errorf("dirNameEncodesPath(%q, %q) = %v, want %v", tt.dirName, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// El cwd que guarda cada conversación es la ruta literal, así que gana sobre la
+// heurística — sobre todo cuando la carpeta real ya no está en el disco.
+func TestProjectPathForDirUsesCwd(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	dirName := "-tmp-borrado--workspace-t-320-ruta-larga"
+	convDir := filepath.Join(tmpDir, ".claude", "projects", dirName)
+	os.MkdirAll(convDir, 0755)
+
+	createTestConversation(t, convDir, "conv1", []map[string]interface{}{
+		{"type": "summary", "summary": "sin cwd todavía"},
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"cwd":       "/tmp/borrado/.workspace/t-320-ruta-larga",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hello"},
+		},
+	})
+
+	want := "/tmp/borrado/.workspace/t-320-ruta-larga"
+	if got := projectPathForDir(convDir, dirName); got != want {
+		t.Errorf("projectPathForDir = %q, want %q", got, want)
+	}
+}
+
+// Una conversación puede haber arrancado en otro lado y terminar copiada acá: si el
+// cwd no codifica a este nombre de carpeta, no dice nada de esta carpeta.
+func TestProjectPathForDirIgnoresForeignCwd(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	dirName := "-tmp-borrado-uno"
+	convDir := filepath.Join(tmpDir, ".claude", "projects", dirName)
+	os.MkdirAll(convDir, 0755)
+
+	createTestConversation(t, convDir, "conv1", []map[string]interface{}{
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"cwd":       "/tmp/otra/cosa/completamente",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hello"},
+		},
+	})
+
+	want := projectDirToPath(dirName)
+	if got := projectPathForDir(convDir, dirName); got != want {
+		t.Errorf("projectPathForDir = %q, want fallback %q", got, want)
+	}
+}
+
+// Sin cwd en ninguna conversación queda la heurística de siempre.
+func TestProjectPathForDirFallsBackWithoutCwd(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	dirName := "-tmp-sin-cwd"
+	convDir := filepath.Join(tmpDir, ".claude", "projects", dirName)
+	os.MkdirAll(convDir, 0755)
+
+	createTestConversation(t, convDir, "conv1", []map[string]interface{}{
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hello"},
+		},
+	})
+
+	want := projectDirToPath(dirName)
+	if got := projectPathForDir(convDir, dirName); got != want {
+		t.Errorf("projectPathForDir = %q, want fallback %q", got, want)
+	}
+}
+
+// El índice tiene que quedar armado con la ruta del cwd, no con la adivinada.
+func TestLoadAllConversationsUsesCwdForProjectPath(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	convDir := filepath.Join(tmpDir, ".claude", "projects", "-tmp-borrado--workspace-t-320-ruta-larga")
+	os.MkdirAll(convDir, 0755)
+
+	createTestConversation(t, convDir, "conv1", []map[string]interface{}{
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"cwd":       "/tmp/borrado/.workspace/t-320-ruta-larga",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hello"},
+		},
+	})
+
+	app := &App{
+		claudeDir:     filepath.Join(tmpDir, ".claude"),
+		conversations: make(map[string]*Conversation),
+		projects:      make(map[string]*Project),
+		cache:         &MetadataCache{Version: 1, Conversations: make(map[string]*ConversationMeta)},
+	}
+	if err := app.loadAllConversations(); err != nil {
+		t.Fatalf("loadAllConversations failed: %v", err)
+	}
+
+	conv := app.conversations["conv1"]
+	if conv == nil {
+		t.Fatal("Expected conv1 in the index")
+	}
+	if want := "/tmp/borrado/.workspace/t-320-ruta-larga"; conv.Project != want {
+		t.Errorf("conv.Project = %q, want %q", conv.Project, want)
+	}
+	if want := "t-320-ruta-larga"; conv.ProjectName != want {
+		t.Errorf("conv.ProjectName = %q, want %q", conv.ProjectName, want)
+	}
+}
+
+// La ruta se imprime con puntos de quiebre en los separadores para que no estire el
+// ancho de la página, y lo que va adentro sigue escapado.
+func TestBreakablePath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/home/sebas/robotin", "/<wbr>home/<wbr>sebas/<wbr>robotin"},
+		{`C:\Users\Juan`, `C:\<wbr>Users\<wbr>Juan`},
+		{"/tmp/a-b-c", "/<wbr>tmp/<wbr>a-<wbr>b-<wbr>c"},
+		{"", ""},
+		{"/tmp/<script>", "/<wbr>tmp/<wbr>&lt;script&gt;"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := string(breakablePath(tt.input)); got != tt.want {
+				t.Errorf("breakablePath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // Test truncateString
 func TestTruncateString(t *testing.T) {
 	tests := []struct {
