@@ -25,6 +25,16 @@
                 <button type="button" onclick="navigateSearch(1)" data-i18n-title="Next match">▼</button>
                 <button type="button" onclick="clearSearch()" data-i18n-title="Clear">✕</button>
             </div>
+            <div class="type-filter" id="typeFilter">
+                <button type="button" class="type-filter-toggle" onclick="toggleTypeFilter()" data-i18n-title="Filter message types">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    <span data-i18n="Filter">Filter</span>
+                    <span class="type-filter-badge" id="typeFilterBadge" style="display:none"></span>
+                </button>
+                <div class="type-filter-dropdown" id="typeFilterDropdown"></div>
+            </div>
             <a href="/refresh" class="refresh-btn" data-i18n-title="Reload conversations" onclick="saveScrollAndRefresh(event)">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -95,7 +105,7 @@
             {{if .IsGroup}}
             <div class="system-entries-group">
                 {{range .SystemEntries}}
-                <span class="system-entry-badge" onclick="toggleSystemEntry('system-{{.UUID}}')">{{.Type}}</span>
+                <span class="system-entry-badge" data-type="{{.Type}}" onclick="toggleSystemEntry('system-{{.UUID}}')">{{.Type}}</span>
                 <div class="system-entry-panel" id="system-{{.UUID}}" style="display:none">
                     <div class="system-entry-panel-header">
                         <span class="system-entry-panel-type">{{.Type}}</span>
@@ -107,7 +117,7 @@
                 {{end}}
             </div>
             {{else}}
-            <div class="message {{if eq .Message.Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{.Index}}">
+            <div class="message {{if eq .Message.Type "user"}}user-message{{else}}assistant-message{{end}}" data-index="{{.Index}}" data-type="{{if eq .Message.Type "user"}}user{{else}}assistant{{end}}">
                 <div class="message-header" onclick="toggleMessage({{.Index}})">
                     <span class="message-sender">{{if eq .Message.Type "user"}}<span data-i18n="User">User</span>{{else}}<span data-i18n="Agent">Agent</span>{{end}}</span>
                     <span class="message-time">{{formatDate .Message.Timestamp}} {{formatTime .Message.Timestamp}}</span>
@@ -212,6 +222,7 @@
                 </div>
                 <div class="help-section">
                     <h4 data-i18n="Other">Other</h4>
+                    <div class="help-row"><kbd>f</kbd> <span data-i18n="Filter message types">Filter message types</span></div>
                     <div class="help-row"><kbd>H</kbd> o <kbd>?</kbd> <span data-i18n="Show/hide help">Show/hide help</span></div>
                 </div>
             </div>
@@ -242,7 +253,224 @@
                 const dropdown = document.getElementById('menuDropdown');
                 if (dropdown) dropdown.classList.remove('show');
             }
+            if (!e.target.closest('.type-filter')) {
+                closeTypeFilter();
+            }
         });
+
+        // =====================
+        // MESSAGE TYPE FILTER
+        // =====================
+        // Keys: "user", "assistant" (whole messages), "block:thinking" and
+        // "block:tool" (sections inside agent responses), "sys:<type>" (system
+        // entries). The set of hidden keys persists across conversations.
+
+        const TYPE_FILTER_STORAGE_KEY = 'hiddenMessageTypes';
+        const typeFilter = {
+            hidden: new Set(),
+            present: []
+        };
+
+        function loadHiddenTypes() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(TYPE_FILTER_STORAGE_KEY) || '[]');
+                if (Array.isArray(saved)) typeFilter.hidden = new Set(saved);
+            } catch (e) {
+                typeFilter.hidden = new Set();
+            }
+        }
+
+        function saveHiddenTypes() {
+            localStorage.setItem(TYPE_FILTER_STORAGE_KEY, JSON.stringify(Array.from(typeFilter.hidden)));
+        }
+
+        function collectPresentTypes() {
+            const count = sel => document.querySelectorAll(sel).length;
+            const groups = [];
+
+            const messages = [
+                { key: 'user', label: t('User'), n: count('.message.user-message') },
+                { key: 'assistant', label: t('Agent'), n: count('.message.assistant-message') }
+            ].filter(x => x.n > 0);
+            if (messages.length) groups.push({ title: t('Messages'), items: messages });
+
+            const blocks = [
+                { key: 'block:thinking', label: t('Thinking'), n: count('.content-thinking') },
+                { key: 'block:tool', label: t('Tool calls'), n: count('.tool-block, .tool-block-inline') }
+            ].filter(x => x.n > 0);
+            if (blocks.length) groups.push({ title: t('Inside agent responses'), items: blocks });
+
+            const sysCounts = {};
+            document.querySelectorAll('.system-entry-badge').forEach(b => {
+                const type = b.dataset.type;
+                sysCounts[type] = (sysCounts[type] || 0) + 1;
+            });
+            const sys = Object.keys(sysCounts).sort().map(type => ({
+                key: 'sys:' + type, label: type, n: sysCounts[type], mono: true
+            }));
+            if (sys.length) groups.push({ title: t('System entries'), items: sys, bulk: true });
+
+            typeFilter.present = groups;
+        }
+
+        function renderTypeFilter() {
+            const dropdown = document.getElementById('typeFilterDropdown');
+            dropdown.innerHTML = '';
+
+            typeFilter.present.forEach(group => {
+                const section = document.createElement('div');
+                section.className = 'type-filter-section';
+
+                const heading = document.createElement('div');
+                heading.className = 'type-filter-heading';
+                const title = document.createElement('span');
+                title.textContent = group.title;
+                heading.appendChild(title);
+                if (group.bulk) {
+                    const links = document.createElement('span');
+                    const all = document.createElement('a');
+                    all.textContent = t('All');
+                    all.onclick = () => setTypesHidden(group.items.map(i => i.key), false);
+                    const none = document.createElement('a');
+                    none.textContent = t('None');
+                    none.onclick = () => setTypesHidden(group.items.map(i => i.key), true);
+                    links.appendChild(all);
+                    links.appendChild(document.createTextNode(' · '));
+                    links.appendChild(none);
+                    heading.appendChild(links);
+                }
+                section.appendChild(heading);
+
+                group.items.forEach(item => {
+                    const label = document.createElement('label');
+                    label.className = 'type-filter-item';
+                    label.dataset.key = item.key;
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.checked = !typeFilter.hidden.has(item.key);
+                    cb.onchange = () => setTypesHidden([item.key], !cb.checked);
+
+                    const name = document.createElement('span');
+                    name.className = 'type-filter-name' + (item.mono ? ' mono' : '');
+                    name.textContent = item.label;
+
+                    const n = document.createElement('span');
+                    n.className = 'type-filter-count';
+                    n.textContent = item.n;
+
+                    label.appendChild(cb);
+                    label.appendChild(name);
+                    label.appendChild(n);
+                    section.appendChild(label);
+                });
+
+                dropdown.appendChild(section);
+            });
+
+            const footer = document.createElement('div');
+            footer.className = 'type-filter-footer';
+            const reset = document.createElement('a');
+            reset.textContent = t('Show everything');
+            reset.onclick = () => setTypesHidden(presentKeys(), false);
+            footer.appendChild(reset);
+            dropdown.appendChild(footer);
+
+            updateTypeFilterUI();
+        }
+
+        function presentKeys() {
+            return typeFilter.present.flatMap(g => g.items.map(i => i.key));
+        }
+
+        function updateTypeFilterUI() {
+            document.querySelectorAll('.type-filter-item').forEach(label => {
+                const hidden = typeFilter.hidden.has(label.dataset.key);
+                label.querySelector('input').checked = !hidden;
+                label.classList.toggle('dimmed', hidden);
+            });
+
+            const hiddenHere = presentKeys().filter(k => typeFilter.hidden.has(k)).length;
+            const badge = document.getElementById('typeFilterBadge');
+            badge.textContent = hiddenHere;
+            badge.style.display = hiddenHere > 0 ? '' : 'none';
+            document.getElementById('typeFilter').classList.toggle('active', hiddenHere > 0);
+        }
+
+        function setTypesHidden(keys, hidden) {
+            keys.forEach(k => hidden ? typeFilter.hidden.add(k) : typeFilter.hidden.delete(k));
+            saveHiddenTypes();
+            applyTypeFilter();
+            updateTypeFilterUI();
+            refreshVimMessages();
+
+            const query = document.getElementById('localSearch').value;
+            if (query) searchInConversation(query);
+        }
+
+        function applyTypeFilter() {
+            const hidden = typeFilter.hidden;
+            const hideThinking = hidden.has('block:thinking');
+            const hideTools = hidden.has('block:tool');
+
+            document.querySelectorAll('.message').forEach(msg => {
+                msg.querySelectorAll('.content-thinking').forEach(b => b.classList.toggle('type-hidden', hideThinking));
+                msg.querySelectorAll('.tool-block, .tool-block-inline').forEach(b => b.classList.toggle('type-hidden', hideTools));
+
+                let hide = hidden.has(msg.dataset.type);
+                if (!hide) {
+                    // A message whose every section is hidden is hidden too
+                    const blocks = msg.querySelector('.message-content-blocks');
+                    if (blocks) {
+                        const children = Array.from(blocks.children);
+                        hide = children.length > 0 && children.every(c => c.classList.contains('type-hidden'));
+                    } else if (!msg.querySelector('.message-content')) {
+                        hide = hideTools && msg.querySelector('.tool-blocks') !== null;
+                    }
+                }
+                msg.classList.toggle('type-hidden', hide);
+            });
+
+            document.querySelectorAll('.system-entry-badge').forEach(badge => {
+                const hide = hidden.has('sys:' + badge.dataset.type);
+                badge.classList.toggle('type-hidden', hide);
+                const panel = badge.nextElementSibling;
+                if (panel && panel.classList.contains('system-entry-panel')) {
+                    panel.classList.toggle('type-hidden', hide);
+                }
+            });
+
+            document.querySelectorAll('.system-entries-group').forEach(group => {
+                const badges = Array.from(group.querySelectorAll('.system-entry-badge'));
+                group.classList.toggle('type-hidden', badges.every(b => b.classList.contains('type-hidden')));
+            });
+        }
+
+        function initTypeFilter() {
+            loadHiddenTypes();
+            collectPresentTypes();
+            renderTypeFilter();
+            applyTypeFilter();
+        }
+
+        function toggleTypeFilter() {
+            const el = document.getElementById('typeFilter');
+            el.classList.toggle('open');
+            if (el.classList.contains('open')) {
+                const first = el.querySelector('.type-filter-item input');
+                if (first) first.focus();
+            }
+        }
+
+        function closeTypeFilter() {
+            const el = document.getElementById('typeFilter');
+            if (el) el.classList.remove('open');
+        }
+
+        function isTypeFilterOpen() {
+            const el = document.getElementById('typeFilter');
+            return el && el.classList.contains('open');
+        }
 
         function toggleSystemEntry(id) {
             const el = document.getElementById(id);
@@ -313,7 +541,7 @@
                 return;
             }
 
-            const messages = document.querySelectorAll('.message');
+            const messages = document.querySelectorAll('.message:not(.type-hidden)');
             const lowerQuery = query.toLowerCase();
 
             messages.forEach(msg => {
@@ -345,7 +573,7 @@
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
             let node;
             while (node = walker.nextNode()) {
-                if (node.textContent.trim()) {
+                if (node.textContent.trim() && !node.parentElement.closest('.type-hidden')) {
                     nodes.push(node);
                 }
             }
@@ -353,7 +581,7 @@
         }
 
         function highlightMatches(query) {
-            const messages = document.querySelectorAll('.message');
+            const messages = document.querySelectorAll('.message:not(.type-hidden)');
             const lowerQuery = query.toLowerCase();
 
             messages.forEach(msg => {
@@ -369,7 +597,8 @@
             const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
             let node;
             while (node = walker.nextNode()) {
-                if (node.textContent.trim() && !node.parentElement.classList.contains('search-highlight')) {
+                if (node.textContent.trim() && !node.parentElement.classList.contains('search-highlight')
+                    && !node.parentElement.closest('.type-hidden')) {
                     textNodes.push(node);
                 }
             }
@@ -508,8 +737,36 @@
             helpVisible: false
         };
 
+        function visibleMessages() {
+            return Array.from(document.querySelectorAll('.message:not(.type-hidden)'));
+        }
+
+        // Rebuild the navigable list after the type filter changed, keeping the
+        // focus on the same message when it is still visible, or moving it to
+        // the next visible one otherwise.
+        function refreshVimMessages() {
+            const focused = vim.focusedIndex >= 0 ? vim.messages[vim.focusedIndex] : null;
+            if (vim.selectionMode) exitSelectionMode();
+
+            vim.messages = visibleMessages();
+            let index = focused ? vim.messages.indexOf(focused) : -1;
+            if (index < 0 && focused) {
+                focused.classList.remove('vim-focused');
+                index = vim.messages.findIndex(m => focused.compareDocumentPosition(m) & Node.DOCUMENT_POSITION_FOLLOWING);
+                if (index < 0) index = vim.messages.length - 1;
+            }
+
+            vim.focusedIndex = -1;
+            if (index >= 0) {
+                setFocusNoScroll(index);
+            } else {
+                updateModeIndicator();
+            }
+        }
+
         function initVim() {
-            vim.messages = Array.from(document.querySelectorAll('.message'));
+            initTypeFilter();
+            vim.messages = visibleMessages();
             if (vim.messages.length > 0) {
                 // Check if we have a saved focus index from refresh
                 const savedFocusIndex = sessionStorage.getItem('vimFocusedIndex');
@@ -807,11 +1064,11 @@
         }
 
         function expandAll() {
-            vim.messages.forEach((msg, i) => {
+            vim.messages.forEach(msg => {
                 const content = msg.querySelector('.message-content');
                 if (content && content.classList.contains('collapsed')) {
                     content.classList.remove('collapsed');
-                    const toggle = document.getElementById('toggle-' + i);
+                    const toggle = document.getElementById('toggle-' + msg.dataset.index);
                     if (toggle) toggle.textContent = t('Show less');
                 }
 
@@ -827,11 +1084,11 @@
         }
 
         function collapseAll() {
-            vim.messages.forEach((msg, i) => {
+            vim.messages.forEach(msg => {
                 const content = msg.querySelector('.message-content');
                 if (content && !content.classList.contains('collapsed')) {
                     content.classList.add('collapsed');
-                    const toggle = document.getElementById('toggle-' + i);
+                    const toggle = document.getElementById('toggle-' + msg.dataset.index);
                     if (toggle) toggle.textContent = t('Show more');
                 }
 
@@ -852,7 +1109,11 @@
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
                 if (e.key === 'Escape') {
                     e.target.blur();
-                    clearSearch();
+                    if (e.target.closest('.type-filter')) {
+                        closeTypeFilter();
+                    } else {
+                        clearSearch();
+                    }
                 }
                 if (e.key === 'Enter' && e.target.id === 'localSearch') {
                     e.preventDefault();
@@ -887,6 +1148,8 @@
             if (key === 'Escape') {
                 if (vim.helpVisible) {
                     hideHelp();
+                } else if (isTypeFilterOpen()) {
+                    closeTypeFilter();
                 } else if (vim.selectionMode) {
                     exitSelectionMode();
                 } else {
@@ -967,10 +1230,16 @@
                 navigateSearch(-1);
             }
 
+            // Message type filter
+            else if (key === 'f') {
+                e.preventDefault();
+                toggleTypeFilter();
+            }
+
             // Enter to toggle message expansion
             else if (key === 'Enter' && vim.focusedIndex >= 0) {
                 e.preventDefault();
-                toggleMessage(vim.focusedIndex);
+                toggleMessage(vim.messages[vim.focusedIndex].dataset.index);
             }
 
             // Back navigation

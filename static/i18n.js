@@ -94,6 +94,18 @@ const i18n = {
         'Clear': 'Limpiar',
         'Other': 'Otros',
         'Show/hide help': 'Mostrar/ocultar ayuda',
+
+        // Message type filter
+        'Filter': 'Filtrar',
+        'Filter message types': 'Filtrar tipos de mensaje',
+        'Messages': 'Mensajes',
+        'Inside agent responses': 'Dentro de las respuestas del Agente',
+        'Thinking': 'Pensamiento',
+        'Tool calls': 'Llamadas a herramientas',
+        'System entries': 'Entradas de sistema',
+        'All': 'Todas',
+        'None': 'Ninguna',
+        'Show everything': 'Mostrar todo',
         'Press [:keys:] to close': 'Presiona [:keys:] para cerrar',
 
         // Notifications

@@ -58,6 +58,7 @@ Then open http://localhost:8042 in your browser.
 - Project-scoped search (on project page)
 - Local conversation search (JavaScript)
 - Vim-style navigation: j/k, gg/G, v (selection), y (yank), h/l (collapse/expand)
+- Message type filter (f): tick and untick User, Agent, tool calls, thinking and every kind of system entry present in the conversation; navigation and local search skip what is hidden, and the choice persists across conversations
 - Sorting by last/first activity, name, message count
 - Toggle ascending/descending by clicking the same criterion
 - Light and dark mode with persistence

@@ -1,5 +1,13 @@
 # Changelog - Claude Conversations Viewer
 
+## 2026-09-03
+
+### Message type filter
+- New **Filter** dropdown in the conversation header (shortcut **f**) with one checkbox per kind of message present in the conversation: User, Agent, tool calls, thinking, and each system entry type (queue-operation, attachment, last-prompt, ...)
+- Unticked kinds disappear from the view; an Agent response made only of hidden sections disappears too
+- Vim navigation (j/k, counter) and the local search only consider what is visible
+- The set of hidden kinds is saved in localStorage and follows you across conversations; a badge on the button shows how many kinds are hidden here
+
 ## 2026-02-12
 
 ### Authentication (optional)

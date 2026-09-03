@@ -58,6 +58,7 @@ Luego abrir http://localhost:8042 en el navegador.
 - Búsqueda por proyecto (en página de proyecto)
 - Búsqueda local en conversación (JavaScript)
 - Navegación Vim-style: j/k, gg/G, v (selección), y (yank), h/l (colapsar/expandir)
+- Filtro por tipo de mensaje (f): tildar y destildar Usuario, Agente, llamadas a herramientas, pensamiento y cada tipo de entrada de sistema presente en la conversación; la navegación y la búsqueda local saltan lo oculto, y la elección persiste entre conversaciones
 - Ordenamiento por última/primera actividad, nombre, cantidad de mensajes
 - Toggle ascendente/descendente clickeando en el mismo criterio
 - Modo claro y oscuro con persistencia

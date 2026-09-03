@@ -1693,3 +1693,67 @@ func TestDuplicateTitlesRemoved(t *testing.T) {
 		t.Errorf("Expected 2 unique titles, got %d: %v", len(conv.Titles), conv.Titles)
 	}
 }
+
+func TestHandlerConversationRendersTypeFilter(t *testing.T) {
+	tmpDir, cleanup := setupTestEnv(t)
+	defer cleanup()
+
+	projectDir := filepath.Join(tmpDir, ".claude", "projects", "-test-project")
+	os.MkdirAll(projectDir, 0755)
+
+	entries := []map[string]interface{}{
+		{
+			"type":      "user",
+			"uuid":      "u1",
+			"timestamp": "2025-01-15T10:00:00Z",
+			"message":   map[string]interface{}{"role": "user", "content": "Hello"},
+		},
+		{
+			"type":      "assistant",
+			"uuid":      "a1",
+			"timestamp": "2025-01-15T10:00:01Z",
+			"message":   map[string]interface{}{"role": "assistant", "content": "Hi there"},
+		},
+		{
+			"type":      "queue-operation",
+			"uuid":      "q1",
+			"timestamp": "2025-01-15T10:00:02Z",
+		},
+	}
+	createTestConversation(t, projectDir, "conv1", entries)
+
+	app := &App{
+		claudeDir:     filepath.Join(tmpDir, ".claude"),
+		projects:      make(map[string]*Project),
+		conversations: make(map[string]*Conversation),
+		cache:         &MetadataCache{Conversations: make(map[string]*ConversationMeta)},
+	}
+	app.conversations["conv1"] = &Conversation{
+		SessionID:   "conv1",
+		Project:     "/test/project",
+		ProjectName: "project",
+		ProjectDir:  "-test-project",
+		LastTime:    time.Now(),
+		FullyLoaded: false,
+	}
+
+	req := httptest.NewRequest("GET", "/conversation?id=conv1", nil)
+	w := httptest.NewRecorder()
+	app.handleConversation(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Status = %d, want %d", w.Code, http.StatusOK)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		`id="typeFilter"`,
+		`id="typeFilterDropdown"`,
+		`data-type="user"`,
+		`data-type="assistant"`,
+		`class="system-entry-badge" data-type="queue-operation"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("conversation page is missing %q", want)
+		}
+	}
+}
